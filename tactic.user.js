@@ -25,8 +25,8 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/errors.js?v=2
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/scheduler/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/lifecycle.js?v=1
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=3
