@@ -8,17 +8,20 @@
  * services/dom/navigation.js
  *
  * Purpose:
- * Detects Torn navigation and SPA route changes.
+ * Detects Torn navigation and SPA route changes without
+ * observing unrelated page mutations.
  *
  * Responsibilities:
  * - Monitor pushState and replaceState
  * - Monitor popstate and hashchange
- * - Detect navigation caused by DOM replacement
  * - Identify the current Torn page
  * - Emit navigation-change events
+ * - Debounce duplicate route checks
  * - Expose navigation diagnostics
  *
  * Does NOT:
+ * - Observe the entire document body
+ * - React to unrelated Torn DOM mutations
  * - Perform navigation
  * - Click links
  * - Contain application business logic
@@ -28,12 +31,14 @@
  * - TACTIC.services.dom.stopNavigation()
  * - TACTIC.services.dom.getNavigation()
  * - TACTIC.services.dom.getPage()
+ * - TACTIC.services.dom.checkNavigation()
  *
  * Dependencies:
  * - services/dom/index.js
  * - services/dom/pages.js
  * - services/scheduler/index.js
  * - core/events.js
+ * - core/health.js
  *
  * ============================================================
  */
@@ -52,23 +57,22 @@
         return;
     }
 
-    const dom =
-        TACTIC.services.dom;
+    const {
+        services,
+        constants,
+    } = TACTIC;
 
-    const events =
-        TACTIC.services.events;
+    const {
+        dom,
+        events,
+        logger,
+        scheduler,
+        health,
+    } = services;
 
-    const logger =
-        TACTIC.services.logger;
-
-    const scheduler =
-        TACTIC.services.scheduler;
-
-    const health =
-        TACTIC.services.health;
-
-    const constants =
-        TACTIC.constants;
+    const {
+        EVENTS,
+    } = constants;
 
     if (
         !dom ||
@@ -82,18 +86,14 @@
         return;
     }
 
-    const {
-        EVENTS,
-    } = constants;
-
-    const OBSERVER_NAME =
-        "dom:navigation-observer";
-
-    const OBSERVER_GROUP =
-        "dom:system";
-
     const CHECK_TIMER_NAME =
         "dom:navigation-check";
+
+    const TIMER_GROUP =
+        "dom:system";
+
+    const CHECK_DELAY_MS =
+        50;
 
     const HISTORY_PATCH =
         Symbol.for(
@@ -114,6 +114,12 @@
             0,
 
         checkCount:
+            0,
+
+        scheduledCheckCount:
+            0,
+
+        duplicateCheckCount:
             0,
 
         lastCheckedAt:
@@ -175,6 +181,14 @@
             checkCount:
                 state.checkCount,
 
+            scheduledCheckCount:
+                state
+                    .scheduledCheckCount,
+
+            duplicateCheckCount:
+                state
+                    .duplicateCheckCount,
+
             lastCheckedAt:
                 state.lastCheckedAt,
 
@@ -215,10 +229,51 @@
         );
     }
 
+    function updateHealth() {
+        health?.heartbeat(
+            "service:dom",
+            {
+                metadata: {
+                    navigationStarted:
+                        state.started,
+
+                    currentPage:
+                        state.current
+                            ?.id ||
+                        null,
+
+                    currentHref:
+                        state.current
+                            ?.route
+                            ?.href ||
+                        null,
+
+                    navigationChecks:
+                        state.checkCount,
+
+                    navigationChanges:
+                        state.changeCount,
+
+                    scheduledNavigationChecks:
+                        state
+                            .scheduledCheckCount,
+
+                    duplicateNavigationChecks:
+                        state
+                            .duplicateCheckCount,
+                },
+            }
+        );
+    }
+
     function runNavigationCheck(
         reason =
             "manual"
     ) {
+        if (!state.started) {
+            return false;
+        }
+
         state.checkCount +=
             1;
 
@@ -234,21 +289,10 @@
                 detected
             )
         ) {
-            health?.heartbeat(
-                "service:dom",
-                {
-                    metadata: {
-                        navigationStarted:
-                            state.started,
+            state.duplicateCheckCount +=
+                1;
 
-                        navigationChecks:
-                            state.checkCount,
-
-                        navigationChanges:
-                            state.changeCount,
-                    },
-                }
-            );
+            updateHealth();
 
             return false;
         }
@@ -294,28 +338,7 @@
             payload
         );
 
-        health?.heartbeat(
-            "service:dom",
-            {
-                metadata: {
-                    currentPage:
-                        state.current.id,
-
-                    currentHref:
-                        state.current
-                            .route.href,
-
-                    navigationStarted:
-                        state.started,
-
-                    navigationChecks:
-                        state.checkCount,
-
-                    navigationChanges:
-                        state.changeCount,
-                },
-            }
-        );
+        updateHealth();
 
         logger?.debug(
             `Torn navigation detected: ${
@@ -342,10 +365,13 @@
             return false;
         }
 
+        state.scheduledCheckCount +=
+            1;
+
         if (scheduler) {
             scheduler.once(
                 CHECK_TIMER_NAME,
-                50,
+                CHECK_DELAY_MS,
                 () => {
                     runNavigationCheck(
                         reason
@@ -353,7 +379,7 @@
                 },
                 {
                     group:
-                        OBSERVER_GROUP,
+                        TIMER_GROUP,
 
                     replaceExisting:
                         true,
@@ -367,6 +393,8 @@
 
                         purpose:
                             "navigation-check",
+
+                        reason,
                     },
                 }
             );
@@ -374,12 +402,13 @@
             return true;
         }
 
-        queueMicrotask(
+        setTimeout(
             () => {
                 runNavigationCheck(
                     reason
                 );
-            }
+            },
+            CHECK_DELAY_MS
         );
 
         return true;
@@ -391,7 +420,7 @@
                 HISTORY_PATCH
             ]
         ) {
-            return;
+            return false;
         }
 
         const originalPushState =
@@ -405,6 +434,9 @@
         function patchedPushState(
             ...args
         ) {
+            const previousHref =
+                globalThis.location.href;
+
             const result =
                 originalPushState
                     .apply(
@@ -412,9 +444,15 @@
                         args
                     );
 
-            scheduleCheck(
-                "history:pushState"
-            );
+            if (
+                globalThis.location
+                    .href !==
+                previousHref
+            ) {
+                scheduleCheck(
+                    "history:pushState"
+                );
+            }
 
             return result;
         }
@@ -422,6 +460,9 @@
         function patchedReplaceState(
             ...args
         ) {
+            const previousHref =
+                globalThis.location.href;
+
             const result =
                 originalReplaceState
                     .apply(
@@ -429,9 +470,15 @@
                         args
                     );
 
-            scheduleCheck(
-                "history:replaceState"
-            );
+            if (
+                globalThis.location
+                    .href !==
+                previousHref
+            ) {
+                scheduleCheck(
+                    "history:replaceState"
+                );
+            }
 
             return result;
         }
@@ -450,6 +497,8 @@
             originalPushState,
             originalReplaceState,
         };
+
+        return true;
     }
 
     function restoreHistory() {
@@ -459,7 +508,7 @@
             ];
 
         if (!patch) {
-            return;
+            return false;
         }
 
         globalThis.history
@@ -473,6 +522,8 @@
         delete globalThis.history[
             HISTORY_PATCH
         ];
+
+        return true;
     }
 
     function handlePopState() {
@@ -485,51 +536,6 @@
         scheduleCheck(
             "window:hashchange"
         );
-    }
-
-    function startDomObserver() {
-        if (!document.body) {
-            return false;
-        }
-
-        dom.observe(
-            OBSERVER_NAME,
-            document.body,
-            () => {
-                scheduleCheck(
-                    "dom:mutation"
-                );
-            },
-            {
-                group:
-                    OBSERVER_GROUP,
-
-                replaceExisting:
-                    true,
-
-                childList:
-                    true,
-
-                subtree:
-                    true,
-
-                attributes:
-                    false,
-
-                characterData:
-                    false,
-
-                emitMutationEvent:
-                    false,
-
-                metadata: {
-                    purpose:
-                        "navigation-detection",
-                },
-            }
-        );
-
-        return true;
     }
 
     function startNavigation() {
@@ -558,21 +564,11 @@
             handleHashChange
         );
 
-        startDomObserver();
-
         runNavigationCheck(
             "navigation:start"
         );
 
-        health?.heartbeat(
-            "service:dom",
-            {
-                metadata: {
-                    navigationStarted:
-                        true,
-                },
-            }
-        );
+        updateHealth();
 
         logger?.info(
             "DOM navigation detection started"
@@ -596,10 +592,6 @@
             CHECK_TIMER_NAME
         );
 
-        dom.disconnect(
-            OBSERVER_NAME
-        );
-
         globalThis.removeEventListener(
             "popstate",
             handlePopState
@@ -612,15 +604,7 @@
 
         restoreHistory();
 
-        health?.heartbeat(
-            "service:dom",
-            {
-                metadata: {
-                    navigationStarted:
-                        false,
-                },
-            }
-        );
+        updateHealth();
 
         logger?.info(
             "DOM navigation detection stopped"
@@ -659,9 +643,5 @@
     dom.checkNavigation =
         runNavigationCheck;
 
-    /*
-     * Navigation detection starts automatically after the
-     * service extension loads.
-     */
     startNavigation();
 })();
