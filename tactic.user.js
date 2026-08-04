@@ -1,0 +1,70 @@
+// ==UserScript==
+// @name         TACTIC Modular Dev
+// @namespace    local.torn.tactic
+// @version      0.2.0-dev
+// @description  Modular development build of the Torn Assistant & Companion Toolkit.
+// @author       XZer0
+// @match        https://www.torn.com/*
+//
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_notification
+// @grant        unsafeWindow
+//
+// Replace this with your exact raw GitHub URL:
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/refs/heads/main/core/namespace.js?v=1
+//
+// @run-at       document-idle
+// ==/UserScript==
+
+(() => {
+    "use strict";
+
+    if (!globalThis.TACTIC) {
+        console.error(
+            "[TACTIC Loader] Namespace was not loaded."
+        );
+
+        return;
+    }
+
+    /*
+     * Development-only console access.
+     *
+     * Violentmonkey runs userscripts in an isolated environment.
+     * Exposing this reference lets us inspect TACTIC from Chrome's
+     * normal Developer Tools console.
+     *
+     * Do not store API keys, cookies, or other secrets directly
+     * on the TACTIC object.
+     */
+    try {
+        Object.defineProperty(
+            unsafeWindow,
+            "TACTIC_DEV",
+            {
+                configurable: true,
+                enumerable: false,
+                get() {
+                    return globalThis.TACTIC;
+                },
+            }
+        );
+
+        console.log(
+            "[TACTIC Loader] Debug reference exposed as TACTIC_DEV"
+        );
+    } catch (error) {
+        console.warn(
+            "[TACTIC Loader] Could not expose debug reference",
+            error
+        );
+    }
+
+    console.log(
+        "[TACTIC Loader] Loader executed",
+        globalThis.TACTIC
+    );
+})();
