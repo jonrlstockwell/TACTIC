@@ -9,12 +9,14 @@
  *
  * Purpose:
  * Provides a read-only dashboard for inspecting the current
- * TACTIC framework, services, runtime, health, and modules.
+ * TACTIC framework, services, repositories, runtime, health,
+ * and modules.
  *
  * Responsibilities:
  * - Display framework identity and lifecycle state
  * - Display overall Health status and score
  * - Display registered service health
+ * - Display registered repository health and diagnostics
  * - Display Scheduler, DOM, Settings, and Notification metrics
  * - Display error and warning counts
  * - Display registered module status
@@ -39,6 +41,7 @@
  * - services/dom/index.js
  * - services/settings/index.js
  * - services/notifications/index.js
+ * - repositories/user/index.js
  * - ui/components/index.js
  * - ui/drawer/index.js
  *
@@ -145,6 +148,21 @@
         return element;
     }
 
+    function safelyRead(
+        reader,
+        fallback = null
+    ) {
+        try {
+            const value =
+                reader();
+
+            return value ??
+                fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
     function formatDuration(
         milliseconds
     ) {
@@ -237,6 +255,34 @@
         return new Date(
             timestamp
         ).toLocaleString();
+    }
+
+    function formatMoney(
+        value
+    ) {
+        if (
+            !Number.isFinite(
+                value
+            )
+        ) {
+            return "Unavailable";
+        }
+
+        return new Intl.NumberFormat(
+            "en-US",
+            {
+                style:
+                    "currency",
+
+                currency:
+                    "USD",
+
+                maximumFractionDigits:
+                    0,
+            }
+        ).format(
+            value
+        );
     }
 
     function getHealthIcon(
@@ -536,6 +582,9 @@
 
                             fontSize:
                                 "11px",
+
+                            overflowWrap:
+                                "anywhere",
                         },
                     }
                 );
@@ -574,19 +623,41 @@
         return row;
     }
 
-    function safelyRead(
-        reader,
-        fallback = null
-    ) {
-        try {
-            const value =
-                reader();
+    function collectRepositoryDiagnostics() {
+        const diagnostics =
+            {};
 
-            return value ??
-                fallback;
-        } catch {
-            return fallback;
+        const repositories =
+            TACTIC.repositories;
+
+        if (
+            !repositories ||
+            typeof repositories !==
+                "object"
+        ) {
+            return diagnostics;
         }
+
+        for (
+            const [
+                repositoryName,
+                repository,
+            ] of Object.entries(
+                repositories
+            )
+        ) {
+            diagnostics[
+                repositoryName
+            ] =
+                safelyRead(
+                    () =>
+                        repository
+                            ?.inspect?.(),
+                    null
+                );
+        }
+
+        return diagnostics;
     }
 
     function collectDashboardData() {
@@ -680,6 +751,9 @@
                 .values(),
         ];
 
+        const repositories =
+            collectRepositoryDiagnostics();
+
         return {
             timestamp:
                 Date.now(),
@@ -694,6 +768,7 @@
             logger,
             errorRecords,
             modules,
+            repositories,
         };
     }
 
@@ -827,6 +902,11 @@
                 .namespaceCount ||
             0;
 
+        const repositoryCount =
+            Object.keys(
+                data.repositories
+            ).length;
+
         const warnings =
             data.errorRecords.filter(
                 (entry) =>
@@ -869,6 +949,13 @@
                 ),
 
                 createCard(
+                    "Repositories",
+                    String(
+                        repositoryCount
+                    )
+                ),
+
+                createCard(
                     "Active Notifications",
                     String(
                         activeNotifications
@@ -886,6 +973,13 @@
                     "Errors",
                     String(
                         errorCount
+                    )
+                ),
+
+                createCard(
+                    "Registered Modules",
+                    String(
+                        data.modules.length
                     )
                 ),
             ])
@@ -945,6 +1039,271 @@
                         detail:
                             `Score ${service.score}/100`,
                     })
+                );
+            }
+        }
+
+        root.appendChild(
+            section.section
+        );
+    }
+
+    function createRepositoryDetail(
+        repositoryName,
+        repositoryDiagnostics
+    ) {
+        if (
+            repositoryName ===
+                "user" &&
+            repositoryDiagnostics
+        ) {
+            const wallet =
+                repositoryDiagnostics
+                    .wallet;
+
+            const watcher =
+                repositoryDiagnostics
+                    .walletWatcher;
+
+            const subscribers =
+                repositoryDiagnostics
+                    .subscribers;
+
+            const walletText =
+                wallet?.available
+                    ? formatMoney(
+                          wallet.value
+                      )
+                    : "Wallet unavailable";
+
+            const watcherText =
+                watcher?.active
+                    ? "watcher active"
+                    : "watcher inactive";
+
+            const subscriberCount =
+                subscribers?.total ||
+                0;
+
+            return (
+                `${walletText} · ` +
+                `${watcherText} · ` +
+                `${subscriberCount} subscriber(s)`
+            );
+        }
+
+        if (
+            repositoryDiagnostics
+                ?.started !==
+            undefined
+        ) {
+            return repositoryDiagnostics
+                .started
+                ? "Repository started"
+                : "Repository stopped";
+        }
+
+        return "Repository diagnostics available";
+    }
+
+    function renderRepositories(
+        root,
+        data
+    ) {
+        const section =
+            createSection(
+                "Repositories"
+            );
+
+        const repositoryHealth =
+            data.health
+                .grouped
+                ?.repositories ||
+            [];
+
+        const knownRepositoryNames =
+            new Set([
+                ...repositoryHealth.map(
+                    (component) =>
+                        component.name.replace(
+                            /^repository:/,
+                            ""
+                        )
+                ),
+
+                ...Object.keys(
+                    data.repositories
+                ),
+            ]);
+
+        if (
+            knownRepositoryNames.size ===
+            0
+        ) {
+            section.content.appendChild(
+                createCard(
+                    "Repositories",
+                    "No repositories are registered."
+                )
+            );
+
+            root.appendChild(
+                section.section
+            );
+
+            return;
+        }
+
+        const healthByName =
+            new Map(
+                repositoryHealth.map(
+                    (component) => [
+                        component.name.replace(
+                            /^repository:/,
+                            ""
+                        ),
+
+                        component,
+                    ]
+                )
+            );
+
+        const sortedNames = [
+            ...knownRepositoryNames,
+        ].sort();
+
+        for (
+            const repositoryName of
+            sortedNames
+        ) {
+            const healthRecord =
+                healthByName.get(
+                    repositoryName
+                );
+
+            const repositoryDiagnostics =
+                data.repositories[
+                    repositoryName
+                ];
+
+            const status =
+                healthRecord
+                    ?.status ||
+                (
+                    repositoryDiagnostics
+                        ?.started
+                        ? "healthy"
+                        : "unknown"
+                );
+
+            const score =
+                healthRecord
+                    ?.score;
+
+            const detailParts =
+                [];
+
+            if (
+                Number.isFinite(
+                    score
+                )
+            ) {
+                detailParts.push(
+                    `Score ${score}/100`
+                );
+            }
+
+            detailParts.push(
+                createRepositoryDetail(
+                    repositoryName,
+                    repositoryDiagnostics
+                )
+            );
+
+            section.content.appendChild(
+                createStatusRow({
+                    icon:
+                        getHealthIcon(
+                            status
+                        ),
+
+                    name:
+                        repositoryName,
+
+                    status,
+
+                    detail:
+                        detailParts.join(
+                            " · "
+                        ),
+                })
+            );
+
+            if (
+                repositoryName ===
+                    "user" &&
+                repositoryDiagnostics
+            ) {
+                const wallet =
+                    repositoryDiagnostics
+                        .wallet;
+
+                const walletWatcher =
+                    repositoryDiagnostics
+                        .walletWatcher;
+
+                const subscribers =
+                    repositoryDiagnostics
+                        .subscribers;
+
+                section.content.appendChild(
+                    createStatGrid([
+                        createCard(
+                            "Wallet",
+                            wallet?.available
+                                ? formatMoney(
+                                      wallet.value
+                                  )
+                                : "Unavailable"
+                        ),
+
+                        createCard(
+                            "Wallet Raw Value",
+                            wallet?.raw ||
+                            "Unavailable"
+                        ),
+
+                        createCard(
+                            "Wallet Watcher",
+                            walletWatcher
+                                ?.active
+                                ? "Active"
+                                : "Inactive"
+                        ),
+
+                        createCard(
+                            "Subscribers",
+                            String(
+                                subscribers
+                                    ?.total ||
+                                0
+                            )
+                        ),
+
+                        createCard(
+                            "Repository Started",
+                            repositoryDiagnostics
+                                .started
+                                ? "Yes"
+                                : "No"
+                        ),
+
+                        createCard(
+                            "Wallet Source",
+                            wallet?.source ||
+                            "Unknown"
+                        ),
+                    ])
                 );
             }
         }
@@ -1323,6 +1682,11 @@
             data
         );
 
+        renderRepositories(
+            container,
+            data
+        );
+
         renderTimers(
             container,
             data
@@ -1368,7 +1732,7 @@
             "🧪",
 
         version:
-            "1.0.1",
+            "1.0.2",
 
         order:
             900,
@@ -1377,15 +1741,6 @@
             logger,
             events,
         }) {
-            /*
-             * The drawer may restore the Developer page before
-             * Lifecycle has completed application startup.
-             *
-             * Once APP.READY is emitted, refresh the dashboard if
-             * it is currently visible so the temporary "starting"
-             * state and partial Health score are replaced with the
-             * final running and healthy values.
-             */
             removeReadyListener =
                 events.on(
                     TACTIC.EVENTS
