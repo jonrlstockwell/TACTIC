@@ -1,3 +1,30 @@
+/**
+ * ============================================================
+ * TACTIC
+ * Torn Assistant & Companion Toolkit
+ * ============================================================
+ *
+ * File:
+ * app/bootstrap.js
+ *
+ * Purpose:
+ * Provides the minimal browser entry point for TACTIC.
+ *
+ * Responsibilities:
+ * - Wait until the document is ready
+ * - Delegate application startup to the Lifecycle service
+ *
+ * Does NOT:
+ * - Initialize modules directly
+ * - Initialize the UI directly
+ * - Contain application startup logic
+ *
+ * Dependencies:
+ * - core/lifecycle.js
+ *
+ * ============================================================
+ */
+
 (() => {
     "use strict";
 
@@ -12,96 +39,41 @@
         return;
     }
 
-    async function start() {
-        if (TACTIC.initialized) {
-            TACTIC.services.logger?.warn(
-                "TACTIC is already initialized"
+    async function boot() {
+        const lifecycle =
+            TACTIC.services.lifecycle;
+
+        if (!lifecycle) {
+            console.error(
+                "[TACTIC Bootstrap] Lifecycle service is unavailable."
             );
 
             return;
         }
 
-        const logger =
-            TACTIC.services.logger;
-
-        const events =
-            TACTIC.services.events;
-
         try {
-            logger.info(
-                "Starting TACTIC"
-            );
-
-            await TACTIC.initializeAllModules();
-
-            await TACTIC.services.drawer
-                .initialize();
-
-            TACTIC.initialized = true;
-
-            events.emit(
-                "app:ready",
-                {
-                    version:
-                        TACTIC.version,
-
-                    moduleCount:
-                        TACTIC.modules.size,
-                }
-            );
-
-            logger.info(
-                "TACTIC started successfully",
-                {
-                    version:
-                        TACTIC.version,
-
-                    modules:
-                        TACTIC.modules.size,
-                }
-            );
+            await lifecycle.start();
         } catch (error) {
-            TACTIC.initialized =
-                false;
-
-            logger.error(
-                "TACTIC startup failed",
-                {
-                    message:
-                        error.message,
-
-                    stack:
-                        error.stack,
-                }
-            );
-
-            events.emit(
-                "app:error",
-                {
-                    error,
-                }
+            console.error(
+                "[TACTIC Bootstrap] Startup failed.",
+                error
             );
         }
     }
 
-    TACTIC.start = start;
-
-    /*
-     * The userscript runs at document-idle, but this protects
-     * against an unusual early-load state.
-     */
     if (
         document.readyState ===
         "loading"
     ) {
         document.addEventListener(
             "DOMContentLoaded",
-            start,
+            boot,
             {
-                once: true,
+                once:
+                    true,
             }
         );
     } else {
-        start();
+        boot();
     }
 })();
