@@ -22,10 +22,10 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=1
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=1
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/demo.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/demo/index.js?v=1
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/app/bootstrap.js?v=1
 //
