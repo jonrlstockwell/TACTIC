@@ -44,6 +44,7 @@
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/demo/index.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/index.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/live-refresh.js?v=1
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/app/bootstrap.js?v=4
 //
