@@ -16,7 +16,7 @@
     globalThis.TACTIC = {
         name: "TACTIC",
         fullName: "Torn Assistant & Companion Toolkit",
-        version: "0.2.0-dev",
+        version: "0.3.0-dev",
 
         config: {},
         state: {},
