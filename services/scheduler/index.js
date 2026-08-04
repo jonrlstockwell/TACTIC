@@ -95,11 +95,6 @@
             ERROR: "error",
         });
 
-    /*
-     * Internal timer records.
-     *
-     * A Map provides unique names and fast lookup.
-     */
     const timers =
         new Map();
 
@@ -200,6 +195,7 @@
         return {
             name,
             type,
+
             group:
                 options.group,
 
@@ -360,7 +356,9 @@
 
         errors?.report({
             code:
-                ERROR_CODES.GENERAL.INTERNAL,
+                ERROR_CODES
+                    .GENERAL
+                    .INTERNAL,
 
             severity:
                 SEVERITY.ERROR,
@@ -552,13 +550,10 @@
 
         if (
             timer.state !==
-            TIMER_STATES.CANCELLED &&
+                TIMER_STATES.CANCELLED &&
             timer.state !==
-            TIMER_STATES.PAUSED
+                TIMER_STATES.PAUSED
         ) {
-            timer.state =
-                TIMER_STATES.SCHEDULED;
-
             scheduleRepeatingTimer(
                 timer
             );
@@ -619,6 +614,16 @@
         timer.nextRunAt =
             timer.scheduledAt +
             delay;
+
+        /*
+         * Restores resumed and recurring timers to SCHEDULED.
+         *
+         * Without this assignment, a timer resumed from PAUSED
+         * keeps the PAUSED state and executeTimer() refuses to
+         * execute it when the new timeout fires.
+         */
+        timer.state =
+            TIMER_STATES.SCHEDULED;
 
         timer.handle =
             setTimeout(
@@ -710,6 +715,7 @@
 
         return {
             timer,
+
             options:
                 normalizedOptions,
         };
@@ -727,8 +733,10 @@
                 normalizedOptions,
         } = prepareTimer({
             name,
+
             type:
                 TIMER_TYPES.ONCE,
+
             delayMs,
             callback,
             options,
@@ -778,10 +786,13 @@
                 normalizedOptions,
         } = prepareTimer({
             name,
+
             type:
                 TIMER_TYPES.REPEATING,
+
             delayMs:
                 intervalMs,
+
             callback,
             options,
         });
@@ -1046,7 +1057,8 @@
             return 0;
         }
 
-        let paused = 0;
+        let paused =
+            0;
 
         for (
             const timer of
@@ -1057,7 +1069,8 @@
                     normalizedGroup &&
                 pause(timer.name)
             ) {
-                paused += 1;
+                paused +=
+                    1;
             }
         }
 
@@ -1074,7 +1087,8 @@
             return 0;
         }
 
-        let resumed = 0;
+        let resumed =
+            0;
 
         for (
             const timer of
@@ -1085,7 +1099,8 @@
                     normalizedGroup &&
                 resume(timer.name)
             ) {
-                resumed += 1;
+                resumed +=
+                    1;
             }
         }
 
@@ -1153,7 +1168,10 @@
                 createPublicSnapshot
             )
             .sort(
-                (first, second) =>
+                (
+                    first,
+                    second
+                ) =>
                     first.name.localeCompare(
                         second.name
                     )
