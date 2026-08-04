@@ -31,6 +31,11 @@
  * - count()
  * - clear()
  *
+ * Dependencies:
+ * - core/constants.js
+ * - core/events.js
+ * - core/logger.js
+ *
  * ============================================================
  */
 
@@ -47,70 +52,25 @@
         return;
     }
 
-    const logger =
-        TACTIC.services.logger;
+    const {
+        services,
+        constants,
+    } = TACTIC;
 
-    const events =
-        TACTIC.services.events;
+    const {
+        logger,
+        events,
+    } = services;
 
-    const MAX_ERRORS = 250;
+    const {
+        ERROR_CODES: CODE,
+        SEVERITY,
+        EVENTS,
+        DEFAULTS,
+    } = constants;
 
-    const SEVERITY = Object.freeze({
-        INFO: "info",
-        WARNING: "warning",
-        ERROR: "error",
-        CRITICAL: "critical",
-    });
-
-    const CODE = Object.freeze({
-        UNKNOWN:
-            "UNKNOWN",
-
-        DOM_SELECTOR_MISSING:
-            "DOM_SELECTOR_MISSING",
-
-        DOM_TIMEOUT:
-            "DOM_TIMEOUT",
-
-        DOM_OBSERVER_FAILED:
-            "DOM_OBSERVER_FAILED",
-
-        API_TIMEOUT:
-            "API_TIMEOUT",
-
-        API_RATE_LIMIT:
-            "API_RATE_LIMIT",
-
-        API_INVALID_KEY:
-            "API_INVALID_KEY",
-
-        API_NETWORK:
-            "API_NETWORK",
-
-        MODULE_INIT_FAILED:
-            "MODULE_INIT_FAILED",
-
-        MODULE_RENDER_FAILED:
-            "MODULE_RENDER_FAILED",
-
-        MODULE_CRASHED:
-            "MODULE_CRASHED",
-
-        SETTINGS_CORRUPT:
-            "SETTINGS_CORRUPT",
-
-        SETTINGS_VERSION:
-            "SETTINGS_VERSION",
-
-        SETTINGS_SAVE_FAILED:
-            "SETTINGS_SAVE_FAILED",
-
-        ASSERTION:
-            "ASSERTION",
-
-        INTERNAL:
-            "INTERNAL",
-    });
+    const MAX_ERRORS =
+        DEFAULTS.MAX_ERROR_HISTORY;
 
     let nextId = 1;
 
@@ -118,15 +78,26 @@
 
     class TACTICErrorRecord {
         constructor({
-            code = CODE.UNKNOWN,
-            severity = SEVERITY.ERROR,
+            code =
+                CODE.GENERAL.UNKNOWN,
+
+            severity =
+                SEVERITY.ERROR,
+
             module = null,
+
             service = null,
+
             message = "",
+
             details = {},
+
             error = null,
+
             recoverable = false,
+
             retryable = false,
+
             recovery = null,
         } = {}) {
             this.id =
@@ -219,13 +190,16 @@
     function normalizeCode(code) {
         const normalized =
             String(
-                code || CODE.UNKNOWN
+                code ||
+                    CODE.GENERAL.UNKNOWN
             )
                 .trim()
                 .toUpperCase();
 
-        return normalized ||
-            CODE.UNKNOWN;
+        return (
+            normalized ||
+            CODE.GENERAL.UNKNOWN
+        );
     }
 
     function normalizeOptionalString(
@@ -241,8 +215,10 @@
         const normalized =
             String(value).trim();
 
-        return normalized ||
-            null;
+        return (
+            normalized ||
+            null
+        );
     }
 
     function normalizeMessage(
@@ -317,9 +293,10 @@
 
     function captureStack() {
         try {
-            return new Error()
-                .stack ||
-                null;
+            return (
+                new Error().stack ||
+                null
+            );
         } catch {
             return null;
         }
@@ -414,13 +391,14 @@
             options instanceof Error
         ) {
             return new TACTICErrorRecord({
-                error: options,
+                error:
+                    options,
 
                 message:
                     options.message,
 
                 code:
-                    CODE.UNKNOWN,
+                    CODE.GENERAL.UNKNOWN,
 
                 severity:
                     SEVERITY.ERROR,
@@ -443,9 +421,10 @@
         logRecord(record);
 
         events?.emit(
-            "error:reported",
+            EVENTS.ERROR.REPORTED,
             {
-                error: record,
+                error:
+                    record,
             }
         );
 
@@ -454,7 +433,7 @@
             SEVERITY.CRITICAL
         ) {
             events?.emit(
-                "error:critical",
+                EVENTS.ERROR.CRITICAL,
                 {
                     error:
                         record,
@@ -566,7 +545,7 @@
         history.length = 0;
 
         events?.emit(
-            "error:cleared",
+            EVENTS.ERROR.CLEARED,
             {
                 removed,
             }
