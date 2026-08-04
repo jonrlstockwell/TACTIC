@@ -14,8 +14,8 @@
  * Responsibilities:
  * - Register health components
  * - Track status, score, activity, errors, and recoveries
- * - Accept component heartbeats
- * - Detect stale components
+ * - Accept optional component heartbeats
+ * - Detect stale active components
  * - React to framework error and module events
  * - Provide read-only health snapshots
  *
@@ -95,23 +95,33 @@
     const DEFAULT_STALE_AFTER_MS =
         90_000;
 
+    const MAX_COMPONENT_HISTORY =
+        50;
+
     const COMPONENT_TYPES =
         Object.freeze({
-            FRAMEWORK: "framework",
-            SERVICE: "service",
-            REPOSITORY: "repository",
-            UI: "ui",
-            MODULE: "module",
+            FRAMEWORK:
+                "framework",
+
+            SERVICE:
+                "service",
+
+            REPOSITORY:
+                "repository",
+
+            UI:
+                "ui",
+
+            MODULE:
+                "module",
         });
 
     const components =
         new Map();
 
-    let monitoringStarted = false;
+    let monitoringStarted =
+        false;
 
-    /**
-     * Convert a component type into a known value.
-     */
     function normalizeType(type) {
         const normalized =
             String(type || "")
@@ -125,9 +135,6 @@
             : COMPONENT_TYPES.SERVICE;
     }
 
-    /**
-     * Convert a health state into a known value.
-     */
     function normalizeStatus(status) {
         const normalized =
             String(status || "")
@@ -158,7 +165,11 @@
         const numeric =
             Number(score);
 
-        if (!Number.isFinite(numeric)) {
+        if (
+            !Number.isFinite(
+                numeric
+            )
+        ) {
             return DEFAULTS
                 .HEALTH_SCORE_MAXIMUM;
         }
@@ -171,7 +182,9 @@
                 DEFAULTS
                     .HEALTH_SCORE_MINIMUM,
 
-                Math.round(numeric)
+                Math.round(
+                    numeric
+                )
             )
         );
     }
@@ -183,7 +196,9 @@
             metadata &&
             typeof metadata ===
                 "object" &&
-            !Array.isArray(metadata)
+            !Array.isArray(
+                metadata
+            )
         ) {
             return {
                 ...metadata,
@@ -191,6 +206,25 @@
         }
 
         return {};
+    }
+
+    function normalizeStaleAfterMs(
+        staleAfterMs,
+        fallback =
+            DEFAULT_STALE_AFTER_MS
+    ) {
+        if (
+            Number.isFinite(
+                staleAfterMs
+            ) &&
+            staleAfterMs > 0
+        ) {
+            return Math.floor(
+                staleAfterMs
+            );
+        }
+
+        return fallback;
     }
 
     function calculateDefaultScore(
@@ -213,6 +247,10 @@
             case HEALTH_STATES.FAILED:
                 return 0;
 
+            /*
+             * Disabled and stopped components are intentionally
+             * inactive rather than unhealthy.
+             */
             case HEALTH_STATES.DISABLED:
             case HEALTH_STATES.STOPPED:
                 return 100;
@@ -236,14 +274,20 @@
             Date.now();
 
         const normalizedStatus =
-            normalizeStatus(status);
+            normalizeStatus(
+                status
+            );
 
         return {
             name:
-                normalizeName(name),
+                normalizeName(
+                    name
+                ),
 
             type:
-                normalizeType(type),
+                normalizeType(
+                    type
+                ),
 
             enabled:
                 enabled !== false,
@@ -281,14 +325,9 @@
                 null,
 
             staleAfterMs:
-                Number.isFinite(
+                normalizeStaleAfterMs(
                     staleAfterMs
-                ) &&
-                staleAfterMs > 0
-                    ? Math.floor(
-                          staleAfterMs
-                      )
-                    : DEFAULT_STALE_AFTER_MS,
+                ),
 
             stale:
                 false,
@@ -330,7 +369,8 @@
             timestamp:
                 Date.now(),
 
-            action,
+            action:
+                String(action),
 
             status:
                 component.status,
@@ -343,17 +383,14 @@
             },
         });
 
-        /*
-         * Keep a compact per-component history.
-         */
         if (
             component.history.length >
-            50
+            MAX_COMPONENT_HISTORY
         ) {
             component.history.splice(
                 0,
                 component.history.length -
-                    50
+                    MAX_COMPONENT_HISTORY
             );
         }
     }
@@ -416,6 +453,11 @@
 
             staleAfterMs:
                 component.staleAfterMs,
+
+            requiresHeartbeat:
+                component.metadata
+                    ?.requiresHeartbeat ===
+                true,
 
             stale:
                 component.stale,
@@ -497,7 +539,9 @@
         metadata = {},
     }) {
         const normalizedName =
-            normalizeName(name);
+            normalizeName(
+                name
+            );
 
         if (
             components.has(
@@ -510,21 +554,18 @@
                 );
 
             existing.type =
-                normalizeType(type);
+                normalizeType(
+                    type
+                );
 
             existing.enabled =
                 enabled !== false;
 
             existing.staleAfterMs =
-                Number.isFinite(
-                    staleAfterMs
-                ) &&
-                staleAfterMs > 0
-                    ? Math.floor(
-                          staleAfterMs
-                      )
-                    : existing
-                          .staleAfterMs;
+                normalizeStaleAfterMs(
+                    staleAfterMs,
+                    existing.staleAfterMs
+                );
 
             existing.metadata = {
                 ...existing.metadata,
@@ -577,6 +618,11 @@
 
                 status:
                     component.status,
+
+                requiresHeartbeat:
+                    component.metadata
+                        ?.requiresHeartbeat ===
+                    true,
             }
         );
 
@@ -592,7 +638,9 @@
 
     function unregister(name) {
         const normalizedName =
-            normalizeName(name);
+            normalizeName(
+                name
+            );
 
         return components.delete(
             normalizedName
@@ -602,7 +650,9 @@
     function has(name) {
         try {
             return components.has(
-                normalizeName(name)
+                normalizeName(
+                    name
+                )
             );
         } catch {
             return false;
@@ -613,7 +663,9 @@
         name
     ) {
         const normalizedName =
-            normalizeName(name);
+            normalizeName(
+                name
+            );
 
         return (
             components.get(
@@ -628,7 +680,9 @@
         defaults = {}
     ) {
         const normalizedName =
-            normalizeName(name);
+            normalizeName(
+                name
+            );
 
         if (
             !components.has(
@@ -685,11 +739,10 @@
         component.updatedAt =
             Date.now();
 
-        component.lastMessage =
-            message === null
-                ? component
-                      .lastMessage
-                : String(message);
+        if (message !== null) {
+            component.lastMessage =
+                String(message);
+        }
 
         component.stale =
             false;
@@ -743,6 +796,7 @@
             action,
             {
                 previousStatus,
+
                 message:
                     component.lastMessage,
             }
@@ -810,13 +864,17 @@
         updatedComponent.lastHeartbeatAt =
             Date.now();
 
+        updatedComponent.stale =
+            false;
+
         if (wasUnhealthy) {
             updatedComponent
                 .lastRecoveryAt =
                 Date.now();
 
             updatedComponent
-                .recoveryCount += 1;
+                .recoveryCount +=
+                1;
 
             emitHealthEvent(
                 EVENTS.HEALTH.RECOVERED,
@@ -897,7 +955,8 @@
             1;
 
         component
-            .consecutiveFailures += 1;
+            .consecutiveFailures +=
+            1;
 
         component.lastFailureAt =
             Date.now();
@@ -995,6 +1054,9 @@
                 options.defaults
             );
 
+        const wasStale =
+            component.stale;
+
         component.lastHeartbeatAt =
             Date.now();
 
@@ -1015,7 +1077,8 @@
 
         if (
             options.markHealthy ===
-            true
+            true ||
+            wasStale
         ) {
             return markHealthy(
                 name,
@@ -1099,12 +1162,18 @@
         if (
             activeComponents.some(
                 (component) =>
-                    [
-                        HEALTH_STATES.UNHEALTHY,
-                        HEALTH_STATES.DEGRADED,
-                    ].includes(
-                        component.status
-                    )
+                    component.status ===
+                    HEALTH_STATES.UNHEALTHY
+            )
+        ) {
+            return HEALTH_STATES.UNHEALTHY;
+        }
+
+        if (
+            activeComponents.some(
+                (component) =>
+                    component.status ===
+                    HEALTH_STATES.DEGRADED
             )
         ) {
             return HEALTH_STATES.DEGRADED;
@@ -1120,6 +1189,20 @@
             return HEALTH_STATES.UNKNOWN;
         }
 
+        if (
+            activeComponents.some(
+                (component) =>
+                    [
+                        HEALTH_STATES.STARTING,
+                        HEALTH_STATES.RECOVERING,
+                    ].includes(
+                        component.status
+                    )
+            )
+        ) {
+            return HEALTH_STATES.STARTING;
+        }
+
         return HEALTH_STATES.HEALTHY;
     }
 
@@ -1131,8 +1214,12 @@
             componentSnapshots.filter(
                 (component) =>
                     component.enabled &&
-                    component.status !==
-                    HEALTH_STATES.DISABLED
+                    ![
+                        HEALTH_STATES.DISABLED,
+                        HEALTH_STATES.STOPPED,
+                    ].includes(
+                        component.status
+                    )
             );
 
         const overallScore =
@@ -1147,7 +1234,6 @@
                           ) =>
                               total +
                               component.score,
-
                           0
                       ) /
                           activeComponents
@@ -1218,6 +1304,13 @@
             componentCount:
                 componentSnapshots.length,
 
+            heartbeatComponentCount:
+                componentSnapshots.filter(
+                    (component) =>
+                        component
+                            .requiresHeartbeat
+                ).length,
+
             staleCount:
                 componentSnapshots.filter(
                     (component) =>
@@ -1229,6 +1322,13 @@
                     (component) =>
                         component.status ===
                         HEALTH_STATES.FAILED
+                ).length,
+
+            unhealthyCount:
+                componentSnapshots.filter(
+                    (component) =>
+                        component.status ===
+                        HEALTH_STATES.UNHEALTHY
                 ).length,
 
             degradedCount:
@@ -1273,7 +1373,8 @@
         const now =
             Date.now();
 
-        const checked = [];
+        const checked =
+            [];
 
         for (
             const component of
@@ -1291,9 +1392,38 @@
                 continue;
             }
 
+            /*
+             * Passive services do not need recurring heartbeats.
+             *
+             * Storage, Events, Logger, Utilities, and similar
+             * services may be perfectly healthy while idle.
+             *
+             * Stale detection is only enabled when a component
+             * explicitly registers:
+             *
+             * metadata.requiresHeartbeat = true
+             */
+            if (
+                component.metadata
+                    ?.requiresHeartbeat !==
+                true
+            ) {
+                checked.push(
+                    createPublicSnapshot(
+                        component
+                    )
+                );
+
+                continue;
+            }
+
+            const heartbeatAt =
+                component.lastHeartbeatAt ??
+                component.registeredAt;
+
             const elapsed =
                 now -
-                component.lastHeartbeatAt;
+                heartbeatAt;
 
             const stale =
                 elapsed >
@@ -1306,6 +1436,10 @@
                 component.stale =
                     true;
 
+                /*
+                 * markDegraded() ordinarily resets stale to false,
+                 * so the flag is restored after updating status.
+                 */
                 markDegraded(
                     component.name,
                     {
@@ -1321,9 +1455,15 @@
                         metadata: {
                             staleForMs:
                                 elapsed,
+
+                            lastStaleCheckAt:
+                                now,
                         },
                     }
                 );
+
+                component.stale =
+                    true;
 
                 errors?.report({
                     code:
@@ -1378,6 +1518,13 @@
 
             checkedCount:
                 checked.length,
+
+            heartbeatCheckedCount:
+                checked.filter(
+                    (component) =>
+                        component
+                            .requiresHeartbeat
+                ).length,
 
             staleCount:
                 checked.filter(
@@ -1507,6 +1654,9 @@
             metadata: {
                 version:
                     TACTIC.version,
+
+                requiresHeartbeat:
+                    false,
             },
         });
 
@@ -1542,6 +1692,13 @@
 
                     metadata: {
                         serviceName,
+
+                        /*
+                         * These are passive framework services.
+                         * They do not require recurring activity.
+                         */
+                        requiresHeartbeat:
+                            false,
                     },
                 });
             }
@@ -1559,6 +1716,11 @@
 
                 status:
                     HEALTH_STATES.HEALTHY,
+
+                metadata: {
+                    requiresHeartbeat:
+                        false,
+                },
             });
         }
 
@@ -1574,6 +1736,11 @@
 
                 status:
                     HEALTH_STATES.HEALTHY,
+
+                metadata: {
+                    requiresHeartbeat:
+                        false,
+                },
             });
         }
 
@@ -1601,6 +1768,9 @@
 
                     version:
                         module.version,
+
+                    requiresHeartbeat:
+                        false,
                 },
             });
         }
@@ -1609,7 +1779,9 @@
     function attachEventListeners() {
         events?.on(
             EVENTS.MODULE.REGISTERED,
-            ({ module }) => {
+            ({
+                module,
+            }) => {
                 register({
                     name:
                         `module:${module.id}`,
@@ -1626,6 +1798,9 @@
 
                         version:
                             module.version,
+
+                        requiresHeartbeat:
+                            false,
                     },
                 });
             }
@@ -1633,7 +1808,9 @@
 
         events?.on(
             EVENTS.MODULE.INITIALIZED,
-            ({ module }) => {
+            ({
+                module,
+            }) => {
                 markHealthy(
                     `module:${module.id}`,
                     {
@@ -1674,7 +1851,9 @@
 
         events?.on(
             EVENTS.MODULE.UNREGISTERED,
-            ({ id }) => {
+            ({
+                id,
+            }) => {
                 unregister(
                     `module:${id}`
                 );
@@ -1686,6 +1865,23 @@
             ({
                 error,
             }) => {
+                /*
+                 * A stale-component warning is generated by Health
+                 * after the affected component has already been
+                 * marked degraded. Do not mark the Health service
+                 * itself degraded merely for reporting it.
+                 */
+                if (
+                    error.service ===
+                        "health" &&
+                    error.code ===
+                        ERROR_CODES
+                            .HEALTH
+                            .COMPONENT_STALE
+                ) {
+                    return;
+                }
+
                 const componentName =
                     error.module
                         ? `module:${error.module}`
@@ -1700,6 +1896,11 @@
                             : error.service
                               ? COMPONENT_TYPES.SERVICE
                               : COMPONENT_TYPES.FRAMEWORK,
+
+                    metadata: {
+                        requiresHeartbeat:
+                            false,
+                    },
                 };
 
                 if (
@@ -1815,12 +2016,34 @@
             HEALTH_STATES,
     };
 
+    /*
+     * Register the Health service itself after exposing the API.
+     */
+    register({
+        name:
+            "service:health",
+
+        type:
+            COMPONENT_TYPES.SERVICE,
+
+        status:
+            HEALTH_STATES.HEALTHY,
+
+        staleAfterMs:
+            120_000,
+
+        metadata: {
+            serviceName:
+                "health",
+
+            requiresHeartbeat:
+                false,
+        },
+    });
+
     registerExistingFrameworkComponents();
     attachEventListeners();
 
-    /*
-     * Monitoring starts automatically once the service loads.
-     */
     startMonitoring();
 
     logger?.info(
