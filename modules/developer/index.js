@@ -18,6 +18,7 @@
  * - Display Scheduler, DOM, Settings, and Notification metrics
  * - Display error and warning counts
  * - Display registered module status
+ * - Refresh automatically when application startup completes
  * - Allow manual dashboard refresh
  *
  * Does NOT:
@@ -90,6 +91,9 @@
             unknown:
                 "⚪",
         });
+
+    let removeReadyListener =
+        null;
 
     function createElement(
         tagName,
@@ -830,7 +834,7 @@
                     "warning"
             ).length;
 
-        const errors =
+        const errorCount =
             data.errorRecords.filter(
                 (entry) =>
                     [
@@ -881,7 +885,7 @@
                 createCard(
                     "Errors",
                     String(
-                        errors
+                        errorCount
                     )
                 ),
             ])
@@ -1077,13 +1081,14 @@
                 const module of
                 sorted
             ) {
-                const health =
+                const moduleHealthRecord =
                     moduleHealth.get(
                         module.id
                     );
 
                 const status =
-                    health?.status ||
+                    moduleHealthRecord
+                        ?.status ||
                     (
                         module.error
                             ? "failed"
@@ -1334,6 +1339,24 @@
         );
     }
 
+    function refreshDashboardIfActive() {
+        const drawer =
+            TACTIC.services.drawer;
+
+        if (
+            !drawer ||
+            !drawer.isOpen() ||
+            drawer.getActiveModuleId() !==
+                MODULE_ID
+        ) {
+            return false;
+        }
+
+        drawer.refresh();
+
+        return true;
+    }
+
     TACTIC.registerModule({
         id:
             MODULE_ID,
@@ -1345,7 +1368,7 @@
             "🧪",
 
         version:
-            "1.0.0",
+            "1.0.1",
 
         order:
             900,
@@ -1354,6 +1377,25 @@
             logger,
             events,
         }) {
+            /*
+             * The drawer may restore the Developer page before
+             * Lifecycle has completed application startup.
+             *
+             * Once APP.READY is emitted, refresh the dashboard if
+             * it is currently visible so the temporary "starting"
+             * state and partial Health score are replaced with the
+             * final running and healthy values.
+             */
+            removeReadyListener =
+                events.on(
+                    TACTIC.EVENTS
+                        .APP
+                        .READY,
+                    () => {
+                        refreshDashboardIfActive();
+                    }
+                );
+
             logger.info(
                 "Developer Dashboard module initialized"
             );
@@ -1374,6 +1416,16 @@
         destroy({
             logger,
         }) {
+            if (
+                typeof removeReadyListener ===
+                "function"
+            ) {
+                removeReadyListener();
+
+                removeReadyListener =
+                    null;
+            }
+
             logger.info(
                 "Developer Dashboard module destroyed"
             );
