@@ -13,14 +13,14 @@
 // @grant        GM_notification
 // @grant        unsafeWindow
 //
-// Replace this with your exact raw GitHub URL:
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/refs/heads/main/core/namespace.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/logger.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/utilities.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=1
 //
 // @run-at       document-idle
 // ==/UserScript==
