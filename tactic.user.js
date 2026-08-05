@@ -124,6 +124,13 @@
 //
 //
 // ============================================================
+// DIAGNOSTICS SERVICE
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/diagnostics/index.js?v=1
+//
+//
+// ============================================================
 // DEVELOPER DASHBOARD
 // Developer build only.
 // ============================================================
