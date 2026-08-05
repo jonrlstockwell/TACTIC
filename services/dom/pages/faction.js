@@ -29,9 +29,6 @@
  * Public API:
  * - TACTIC.services.dom.pages.getHelper("faction-bank")
  *
- * Convenience alias:
- * - TACTIC.services.dom.pages.factionBank
- *
  * Dependencies:
  * - services/dom/index.js
  * - services/dom/selectors.js
@@ -78,7 +75,7 @@
 
     if (
         typeof dom.getSelector !==
-            "function"
+        "function"
     ) {
         console.error(
             "[TACTIC DOM Faction Page] DOM selector catalog is unavailable."
@@ -156,7 +153,27 @@
 
         lastActivityAt:
             Date.now(),
+
+        lastError:
+            null,
     };
+
+    function createErrorSnapshot(
+        error
+    ) {
+        return {
+            name:
+                error?.name ||
+                "Error",
+
+            message:
+                error?.message ||
+                String(error),
+
+            timestamp:
+                Date.now(),
+        };
+    }
 
     function recordActivity(
         operation,
@@ -439,6 +456,13 @@
                 startedAt,
         };
 
+        recordActivity(
+            "wait-timeout",
+            {
+                timeoutMs,
+            }
+        );
+
         if (
             options.rejectOnTimeout ===
             true
@@ -450,6 +474,11 @@
 
             error.name =
                 "FactionBankPageTimeoutError";
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
 
             throw error;
         }
@@ -498,8 +527,8 @@
         input.focus();
 
         /*
-         * Use the native value setter when possible so controlled
-         * interfaces detect the update correctly.
+         * Use the native input-value setter when available.
+         * This helps controlled interfaces detect the update.
          */
         const valueSetter =
             Object.getOwnPropertyDescriptor(
@@ -531,6 +560,9 @@
 
         metrics.lastAmount =
             normalizedAmount;
+
+        metrics.lastError =
+            null;
 
         recordActivity(
             "set-amount",
@@ -623,6 +655,9 @@
         metrics.submitHighlights +=
             1;
 
+        metrics.lastError =
+            null;
+
         recordActivity(
             "highlight-submit",
             {
@@ -656,6 +691,14 @@
         if (!readiness.ready) {
             metrics.preparationFailures +=
                 1;
+
+            recordActivity(
+                "prepare-deposit-failed",
+                {
+                    reason:
+                        "page-not-ready",
+                }
+            );
 
             return {
                 success:
@@ -696,6 +739,22 @@
             metrics.preparationFailures +=
                 1;
 
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            recordActivity(
+                "prepare-deposit-failed",
+                {
+                    reason:
+                        "invalid-amount",
+
+                    error:
+                        metrics.lastError,
+                }
+            );
+
             return {
                 success:
                     false,
@@ -710,13 +769,7 @@
                     "invalid-amount",
 
                 error: {
-                    name:
-                        error?.name ||
-                        "Error",
-
-                    message:
-                        error?.message ||
-                        String(error),
+                    ...metrics.lastError,
                 },
 
                 safety: {
@@ -737,6 +790,15 @@
         ) {
             metrics.preparationFailures +=
                 1;
+
+            recordActivity(
+                "prepare-deposit-failed",
+                {
+                    reason:
+                        amountResult
+                            .reason,
+                }
+            );
 
             return {
                 success:
@@ -784,6 +846,9 @@
                 : highlightSubmit(
                       options
                   );
+
+        metrics.lastError =
+            null;
 
         recordActivity(
             "prepare-deposit",
@@ -929,6 +994,14 @@
 
             metrics: {
                 ...metrics,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
+                        : null,
             },
         };
     }
@@ -944,6 +1017,7 @@
             getRoot,
             getCashSection,
             getForm,
+
             getAmountInput,
             getSubmitButton,
             getPresetButtons,
@@ -955,6 +1029,13 @@
             inspect,
         });
 
+    /*
+     * Register the helper through the page-helper registry.
+     *
+     * Do not attach dom.pages.factionBank directly because the
+     * framework may expose dom.pages as a protected or
+     * non-extensible object.
+     */
     dom.pages.registerHelper(
         HELPER_ID,
         factionBank,
@@ -964,29 +1045,17 @@
         }
     );
 
-    /*
-     * Convenient named access while keeping the helper registry
-     * available for diagnostics and future page helpers.
-     */
-    Object.defineProperty(
-        dom.pages,
-        "factionBank",
+    logger?.info(
+        "Faction Bank DOM page helper loaded",
         {
-            configurable:
-                true,
+            helperId:
+                HELPER_ID,
 
-            enumerable:
-                true,
-
-            writable:
+            submitsForm:
                 false,
 
-            value:
-                factionBank,
+            confirmsTransaction:
+                false,
         }
-    );
-
-    logger?.info(
-        "Faction Bank DOM page helper loaded"
     );
 })();
