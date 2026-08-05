@@ -84,6 +84,13 @@
 //
 //
 // ============================================================
+// WORKFLOW SERVICE
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/index.js?v=1
+//
+//
+// ============================================================
 // REPOSITORIES
 // ============================================================
 //
@@ -111,6 +118,7 @@
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/settings.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/rules.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/protection.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=2
 //
 //
