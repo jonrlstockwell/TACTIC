@@ -8,16 +8,16 @@
  * services/deposit/index.js
  *
  * Purpose:
- * Provides reusable, capability-controlled deposit preparation
- * for TACTIC applications.
+ * Provides reusable, capability-controlled deposit preparation,
+ * including destination navigation and safe form filling.
  *
  * Responsibilities:
  * - Validate deposit preparation requests
- * - Resolve destination-specific selectors
+ * - Navigate to verified deposit destinations when necessary
+ * - Wait for destination pages and amount fields
  * - Fill verified deposit amount fields
- * - Dispatch framework-compatible input events
- * - Highlight the submit control for manual user review
- * - Expose deposit diagnostics and Health information
+ * - Dispatch input and change events
+ * - Highlight submit controls for manual review
  * - Enforce the deposit.prepare capability
  *
  * Does NOT:
@@ -25,28 +25,7 @@
  * - Click deposit buttons
  * - Confirm dialogs
  * - Automatically finalize transactions
- * - Contain Protection rules
- * - Use unverified destination selectors
- *
- * Public API:
- * - prepare()
- * - canPrepare()
- * - getDestination()
- * - listDestinations()
- * - inspect()
- *
- * Reserved future API:
- * - submit()  requires deposit.submit
- * - confirm() requires deposit.confirm
- *
- * Dependencies:
- * - services/capabilities/index.js
- * - services/deposit/destinations.js
- * - services/dom/index.js
- * - services/notifications/index.js
- * - core/logger.js
- * - core/errors.js
- * - core/health.js
+ * - Contain Protection business rules
  *
  * ============================================================
  */
@@ -73,6 +52,7 @@
     const {
         capabilities,
         depositDestinations,
+        navigation,
         dom,
         logger,
         notifications,
@@ -87,6 +67,7 @@
     if (
         !capabilities ||
         !depositDestinations ||
+        !navigation ||
         !dom
     ) {
         console.error(
@@ -109,7 +90,10 @@
         "deposit.confirm";
 
     const DEFAULT_WAIT_TIMEOUT_MS =
-        10_000;
+        15_000;
+
+    const PENDING_STORAGE_KEY =
+        "deposit:pending-preparation";
 
     const HIGHLIGHT_ATTRIBUTE =
         "data-tactic-deposit-highlight";
@@ -122,6 +106,12 @@
             0,
 
         prepared:
+            0,
+
+        navigationRequests:
+            0,
+
+        navigationResumes:
             0,
 
         authorizationFailures:
@@ -220,6 +210,12 @@
             confirmed:
                 false,
 
+            navigationStarted:
+                false,
+
+            pending:
+                false,
+
             destination:
                 null,
 
@@ -307,6 +303,62 @@
         return numeric;
     }
 
+    function getStorage() {
+        return TACTIC.services
+            .storage;
+    }
+
+    function savePendingPreparation(
+        request
+    ) {
+        getStorage()?.set(
+            PENDING_STORAGE_KEY,
+            {
+                destination:
+                    request.destination,
+
+                amount:
+                    request.amount,
+
+                notify:
+                    request.notify !==
+                    false,
+
+                highlightSubmit:
+                    request
+                        .highlightSubmit !==
+                    false,
+
+                createdAt:
+                    Date.now(),
+            }
+        );
+
+        return true;
+    }
+
+    function getPendingPreparation() {
+        const pending =
+            getStorage()?.get(
+                PENDING_STORAGE_KEY,
+                null
+            );
+
+        return (
+            pending &&
+            typeof pending ===
+                "object"
+                ? pending
+                : null
+        );
+    }
+
+    function clearPendingPreparation() {
+        getStorage()?.remove(
+            PENDING_STORAGE_KEY
+        );
+    }
+
     function setNativeValue(
         input,
         value
@@ -385,8 +437,6 @@
                 HIGHLIGHT_ATTRIBUTE
             );
         }
-
-        return highlighted.length;
     }
 
     function highlightSubmit(
@@ -489,40 +539,284 @@
         );
     }
 
-    function reportFailure({
-        message,
-        details = {},
-        error = null,
-        recoverable = true,
-        retryable = true,
-        recovery = null,
+    function validateDestination(
+        destinationId,
+        amount
+    ) {
+        const destination =
+            getDestination(
+                destinationId
+            );
+
+        if (!destination) {
+            return {
+                valid:
+                    false,
+
+                result:
+                    createResult({
+                        destination:
+                            destinationId ||
+                            null,
+
+                        amount,
+
+                        reason:
+                            "unknown-destination",
+
+                        message:
+                            "The selected deposit destination is unknown.",
+                    }),
+            };
+        }
+
+        if (
+            !destination.verified ||
+            !destination.fillSupported ||
+            !destination
+                .amountSelectorPath ||
+            !destination.routeId
+        ) {
+            metrics
+                .unsupportedDestinations +=
+                1;
+
+            return {
+                valid:
+                    false,
+
+                result:
+                    createResult({
+                        destination:
+                            destination.id,
+
+                        destinationName:
+                            destination.name,
+
+                        amount,
+
+                        reason:
+                            "destination-not-mapped",
+
+                        message:
+                            `${destination.name} preparation is unavailable until its route and amount field are verified.`,
+                    }),
+            };
+        }
+
+        return {
+            valid:
+                true,
+
+            destination,
+        };
+    }
+
+    async function fillAmount({
+        destination,
+        amount,
+        timeoutMs,
+        highlightSubmitControl,
+        notify,
     }) {
-        errors?.report({
-            code:
-                TACTIC.ERROR_CODES
-                    ?.GENERAL
-                    ?.INTERNAL ||
-                "INTERNAL",
+        const amountSelector =
+            dom.getSelector?.(
+                destination
+                    .amountSelectorPath
+            );
 
-            severity:
-                TACTIC.SEVERITY
-                    ?.WARNING ||
-                "warning",
+        if (!amountSelector) {
+            metrics
+                .unavailableSelectors +=
+                1;
 
-            service:
-                "deposit",
+            return createResult({
+                destination:
+                    destination.id,
 
-            message,
+                destinationName:
+                    destination.name,
 
-            details,
+                amount,
 
-            error,
+                reason:
+                    "selector-unavailable",
 
-            recoverable,
+                message:
+                    `The ${destination.name} amount selector is unavailable.`,
+            });
+        }
 
-            retryable,
+        const input =
+            await dom.waitFor(
+                amountSelector,
+                {
+                    timeoutMs,
 
-            recovery,
+                    rejectOnTimeout:
+                        false,
+
+                    visible:
+                        true,
+                }
+            );
+
+        if (!input) {
+            metrics.unavailableFields +=
+                1;
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                amount,
+
+                selector:
+                    amountSelector,
+
+                reason:
+                    "amount-field-not-found",
+
+                message:
+                    `The ${destination.name} amount field could not be found.`,
+            });
+        }
+
+        setNativeValue(
+            input,
+            String(amount)
+        );
+
+        const actualValue =
+            normalizeAmount(
+                String(
+                    input.value ||
+                    ""
+                ).replace(
+                    /[^0-9]/g,
+                    ""
+                )
+            );
+
+        if (
+            actualValue !==
+            amount
+        ) {
+            metrics
+                .valueVerificationFailures +=
+                1;
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                amount,
+
+                selector:
+                    amountSelector,
+
+                reason:
+                    "value-verification-failed",
+
+                message:
+                    "The deposit field did not retain the requested amount.",
+            });
+        }
+
+        input.focus();
+
+        input.select?.();
+
+        const submitHighlighted =
+            highlightSubmitControl &&
+            highlightSubmit(
+                destination
+            );
+
+        metrics.prepared +=
+            1;
+
+        metrics.lastPreparedAt =
+            Date.now();
+
+        clearPendingPreparation();
+
+        logger?.info(
+            "Deposit amount prepared",
+            {
+                destination:
+                    destination.id,
+
+                amount,
+
+                submitted:
+                    false,
+
+                confirmed:
+                    false,
+            }
+        );
+
+        if (notify) {
+            notifications?.success(
+                `${destination.name} amount prepared. Review the amount and submit it manually.`,
+                {
+                    title:
+                        "Deposit Ready",
+
+                    group:
+                        "deposit",
+
+                    persistent:
+                        true,
+                }
+            );
+        }
+
+        recordActivity(
+            "prepared",
+            {
+                submitHighlighted,
+            }
+        );
+
+        return createResult({
+            success:
+                true,
+
+            prepared:
+                true,
+
+            submitted:
+                false,
+
+            confirmed:
+                false,
+
+            destination:
+                destination.id,
+
+            destinationName:
+                destination.name,
+
+            amount,
+
+            selector:
+                amountSelector,
+
+            submitHighlighted,
+
+            reason:
+                "prepared",
+
+            message:
+                "The amount was filled successfully. The user must submit the deposit manually.",
         });
     }
 
@@ -573,10 +867,6 @@
             metrics.authorizationFailures +=
                 1;
 
-            recordActivity(
-                "authorization-denied"
-            );
-
             return createResult({
                 destination:
                     destinationId ||
@@ -592,51 +882,14 @@
             });
         }
 
-        const destination =
-            getDestination(
-                destinationId
-            );
-
-        if (!destination) {
+        if (!amount) {
             metrics.validationFailures +=
                 1;
-
-            recordActivity(
-                "unknown-destination"
-            );
 
             return createResult({
                 destination:
                     destinationId ||
                     null,
-
-                amount,
-
-                reason:
-                    "unknown-destination",
-
-                message:
-                    "The selected deposit destination is unknown.",
-            });
-        }
-
-        metrics.lastDestination =
-            destination.id;
-
-        if (!amount) {
-            metrics.validationFailures +=
-                1;
-
-            recordActivity(
-                "invalid-amount"
-            );
-
-            return createResult({
-                destination:
-                    destination.id,
-
-                destinationName:
-                    destination.name,
 
                 amount:
                     null,
@@ -649,71 +902,24 @@
             });
         }
 
+        const validation =
+            validateDestination(
+                destinationId,
+                amount
+            );
+
+        if (!validation.valid) {
+            return validation.result;
+        }
+
+        const destination =
+            validation.destination;
+
+        metrics.lastDestination =
+            destination.id;
+
         metrics.lastAmount =
             amount;
-
-        if (
-            !destination.verified ||
-            !destination.fillSupported ||
-            !destination
-                .amountSelectorPath
-        ) {
-            metrics
-                .unsupportedDestinations +=
-                1;
-
-            recordActivity(
-                "destination-not-supported"
-            );
-
-            return createResult({
-                destination:
-                    destination.id,
-
-                destinationName:
-                    destination.name,
-
-                amount,
-
-                reason:
-                    "destination-not-mapped",
-
-                message:
-                    `${destination.name} preparation is unavailable until its page and amount field are verified.`,
-            });
-        }
-
-        const amountSelector =
-            dom.getSelector?.(
-                destination
-                    .amountSelectorPath
-            );
-
-        if (!amountSelector) {
-            metrics
-                .unavailableSelectors +=
-                1;
-
-            recordActivity(
-                "selector-unavailable"
-            );
-
-            return createResult({
-                destination:
-                    destination.id,
-
-                destinationName:
-                    destination.name,
-
-                amount,
-
-                reason:
-                    "selector-unavailable",
-
-                message:
-                    `The ${destination.name} amount selector is unavailable.`,
-            });
-        }
 
         const timeoutMs =
             Number.isSafeInteger(
@@ -723,202 +929,59 @@
                 ? request.timeoutMs
                 : DEFAULT_WAIT_TIMEOUT_MS;
 
-        const input =
-            await dom.waitFor(
-                amountSelector,
-                {
-                    timeoutMs,
-
-                    rejectOnTimeout:
-                        false,
-
-                    visible:
-                        request.visible !==
-                        false,
-                }
+        const alreadyCurrent =
+            navigation.isCurrent(
+                destination.routeId
             );
 
-        if (!input) {
-            metrics.unavailableFields +=
+        if (!alreadyCurrent) {
+            metrics.navigationRequests +=
                 1;
 
-            recordActivity(
-                "amount-field-not-found"
-            );
-
-            return createResult({
+            savePendingPreparation({
                 destination:
                     destination.id,
 
-                destinationName:
-                    destination.name,
-
                 amount,
 
-                selector:
-                    amountSelector,
+                notify:
+                    request.notify !==
+                    false,
 
-                reason:
-                    "amount-field-not-found",
-
-                message:
-                    `Open the ${destination.name} deposit page before preparing the amount.`,
+                highlightSubmit:
+                    request
+                        .highlightSubmit !==
+                    false,
             });
-        }
 
-        try {
-            setNativeValue(
-                input,
-                String(amount)
-            );
-
-            const actualValue =
-                normalizeAmount(
-                    String(
-                        input.value ||
-                        ""
-                    ).replace(
-                        /[^0-9]/g,
-                        ""
-                    )
+            const navigationResult =
+                navigation.open(
+                    destination.routeId
                 );
-
-            if (
-                actualValue !==
-                amount
-            ) {
-                metrics
-                    .valueVerificationFailures +=
-                    1;
-
-                const verificationError =
-                    new Error(
-                        `Expected deposit value ${amount}, but the field contains ${String(input.value)}.`
-                    );
-
-                reportFailure({
-                    message:
-                        "Deposit amount could not be verified after filling the field.",
-
-                    details: {
-                        destination:
-                            destination.id,
-
-                        requestedAmount:
-                            amount,
-
-                        actualValue:
-                            input.value,
-
-                        selector:
-                            amountSelector,
-                    },
-
-                    error:
-                        verificationError,
-
-                    recovery:
-                        "Review the amount manually before submitting.",
-                });
-
-                recordActivity(
-                    "value-verification-failed"
-                );
-
-                return createResult({
-                    destination:
-                        destination.id,
-
-                    destinationName:
-                        destination.name,
-
-                    amount,
-
-                    selector:
-                        amountSelector,
-
-                    reason:
-                        "value-verification-failed",
-
-                    message:
-                        "The deposit field did not retain the requested amount.",
-                });
-            }
-
-            input.focus();
-
-            input.select?.();
-
-            const submitHighlighted =
-                request.highlightSubmit !==
-                    false &&
-                highlightSubmit(
-                    destination
-                );
-
-            metrics.prepared +=
-                1;
-
-            metrics.lastPreparedAt =
-                Date.now();
 
             recordActivity(
-                "prepared",
-                {
-                    submitHighlighted,
-                }
-            );
-
-            logger?.info(
-                "Deposit amount prepared",
+                "navigation-started",
                 {
                     destination:
                         destination.id,
-
-                    amount,
-
-                    submitted:
-                        false,
-
-                    confirmed:
-                        false,
                 }
             );
-
-            if (
-                request.notify !==
-                false
-            ) {
-                notifications?.success(
-                    `${destination.name} amount prepared. Review the amount and submit it manually.`,
-                    {
-                        title:
-                            "Deposit Ready",
-
-                        group:
-                            "deposit",
-
-                        persistent:
-                            request
-                                .persistentNotification !==
-                            false,
-                    }
-                );
-            }
 
             return createResult({
                 success:
-                    true,
+                    navigationResult
+                        .success,
 
                 prepared:
+                    false,
+
+                navigationStarted:
+                    navigationResult
+                        .navigationStarted,
+
+                pending:
                     true,
 
-                submitted:
-                    false,
-
-                confirmed:
-                    false,
-
                 destination:
                     destination.id,
 
@@ -927,68 +990,81 @@
 
                 amount,
 
-                selector:
-                    amountSelector,
-
-                submitHighlighted,
-
                 reason:
-                    "prepared",
+                    "navigation-started",
 
                 message:
-                    "The amount was filled successfully. The user must submit the deposit manually.",
-            });
-        } catch (error) {
-            reportFailure({
-                message:
-                    "Deposit preparation failed while updating the amount field.",
+                    `${destination.name} is opening. The amount will be prepared after the page loads.`,
 
-                details: {
-                    destination:
-                        destination.id,
-
-                    amount,
-
-                    selector:
-                        amountSelector,
-                },
-
-                error,
-
-                recovery:
-                    "Enter the deposit amount manually and review it before submitting.",
-            });
-
-            recordActivity(
-                "preparation-failed"
-            );
-
-            return createResult({
-                destination:
-                    destination.id,
-
-                destinationName:
-                    destination.name,
-
-                amount,
-
-                selector:
-                    amountSelector,
-
-                reason:
-                    "preparation-failed",
-
-                message:
-                    error.message,
+                href:
+                    navigationResult.href,
             });
         }
+
+        return fillAmount({
+            destination,
+            amount,
+            timeoutMs,
+
+            highlightSubmitControl:
+                request
+                    .highlightSubmit !==
+                false,
+
+            notify:
+                request.notify !==
+                false,
+        });
     }
 
-    /*
-     * These reserved methods deliberately deny submission and
-     * confirmation. They establish the permanent capability
-     * boundary without implementing the restricted behavior.
-     */
+    async function resumePending() {
+        const pending =
+            getPendingPreparation();
+
+        if (!pending) {
+            return null;
+        }
+
+        const destination =
+            getDestination(
+                pending.destination
+            );
+
+        if (
+            !destination ||
+            !destination.routeId ||
+            !navigation.isCurrent(
+                destination.routeId
+            )
+        ) {
+            return null;
+        }
+
+        metrics.navigationResumes +=
+            1;
+
+        return fillAmount({
+            destination,
+
+            amount:
+                normalizeAmount(
+                    pending.amount
+                ),
+
+            timeoutMs:
+                DEFAULT_WAIT_TIMEOUT_MS,
+
+            highlightSubmitControl:
+                pending
+                    .highlightSubmit !==
+                false,
+
+            notify:
+                pending.notify !==
+                false,
+        });
+    }
+
     async function submit() {
         capabilities.require(
             SUBMIT_CAPABILITY,
@@ -1029,6 +1105,11 @@
                 Date.now() -
                 metrics.startedAt,
 
+            pending:
+                cloneValue(
+                    getPendingPreparation()
+                ),
+
             capabilities: {
                 prepare:
                     capabilities.explain(
@@ -1061,17 +1142,14 @@
                           )
                         : null,
             },
-
-            defaults: {
-                waitTimeoutMs:
-                    DEFAULT_WAIT_TIMEOUT_MS,
-            },
         };
     }
 
     TACTIC.services.deposit =
         Object.freeze({
             prepare,
+            resumePending,
+
             canPrepare,
 
             getDestination,
@@ -1104,6 +1182,9 @@
             serviceName:
                 "deposit",
 
+            navigationSupported:
+                true,
+
             preparationPublic:
                 true,
 
@@ -1117,6 +1198,26 @@
                 false,
         },
     });
+
+    /*
+     * After a full-page navigation, the userscript starts again.
+     * Resume a pending preparation once the destination page has
+     * rendered.
+     */
+    queueMicrotask(
+        () => {
+            resumePending().catch(
+                (error) => {
+                    logger?.error(
+                        "Pending deposit preparation could not resume",
+                        {
+                            error,
+                        }
+                    );
+                }
+            );
+        }
+    );
 
     logger?.info(
         "Deposit service loaded"
