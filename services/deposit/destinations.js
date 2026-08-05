@@ -14,25 +14,15 @@
  * Responsibilities:
  * - Define supported deposit destinations
  * - Store verified destination-specific selectors
+ * - Associate deposit destinations with navigation routes
  * - Describe destination capabilities
- * - Allow future destination adapters to be registered
  * - Expose destination diagnostics
  *
  * Does NOT:
- * - Navigate
- * - Read or modify deposit forms
+ * - Navigate directly
+ * - Read or modify forms
  * - Submit or confirm deposits
  * - Contain Protection business rules
- *
- * Public API:
- * - TACTIC.services.depositDestinations.get()
- * - TACTIC.services.depositDestinations.has()
- * - TACTIC.services.depositDestinations.list()
- * - TACTIC.services.depositDestinations.register()
- * - TACTIC.services.depositDestinations.inspect()
- *
- * Dependencies:
- * - core/logger.js
  *
  * ============================================================
  */
@@ -51,8 +41,18 @@
         return;
     }
 
-    const logger =
-        TACTIC.services.logger;
+    const {
+        logger,
+        navigation,
+    } = TACTIC.services;
+
+    if (!navigation) {
+        console.error(
+            "[TACTIC Deposit Destinations] Navigation service is unavailable."
+        );
+
+        return;
+    }
 
     const DESTINATION_IDS =
         Object.freeze({
@@ -80,6 +80,9 @@
             0,
 
         missingLookups:
+            0,
+
+        navigationRoutesRegistered:
             0,
 
         lastDestination:
@@ -170,19 +173,27 @@
                           .trim()
                     : "",
 
+            routeId:
+                typeof definition.routeId ===
+                    "string" &&
+                definition.routeId.trim()
+                    ? definition.routeId
+                          .trim()
+                    : null,
+
+            routeUrl:
+                typeof definition.routeUrl ===
+                    "string" &&
+                definition.routeUrl.trim()
+                    ? definition.routeUrl
+                          .trim()
+                    : null,
+
             pageId:
                 typeof definition.pageId ===
                     "string" &&
                 definition.pageId.trim()
                     ? definition.pageId
-                          .trim()
-                    : null,
-
-            pageUrl:
-                typeof definition.pageUrl ===
-                    "string" &&
-                definition.pageUrl.trim()
-                    ? definition.pageUrl
                           .trim()
                     : null,
 
@@ -257,11 +268,14 @@
             description:
                 destination.description,
 
+            routeId:
+                destination.routeId,
+
+            routeUrl:
+                destination.routeUrl,
+
             pageId:
                 destination.pageId,
-
-            pageUrl:
-                destination.pageUrl,
 
             amountSelectorPath:
                 destination
@@ -292,6 +306,70 @@
         };
     }
 
+    function registerNavigationRoute(
+        destination
+    ) {
+        if (
+            !destination.routeId ||
+            !destination.routeUrl
+        ) {
+            return false;
+        }
+
+        navigation.register({
+            id:
+                destination.routeId,
+
+            name:
+                destination.name,
+
+            url:
+                destination.routeUrl,
+
+            pageId:
+                destination.pageId,
+
+            readySelectorPath:
+                destination
+                    .amountSelectorPath,
+
+            match({
+                currentRoute,
+            }) {
+                const target =
+                    new URL(
+                        destination
+                            .routeUrl,
+                        globalThis.location
+                            .origin
+                    );
+
+                return (
+                    currentRoute.pathname ===
+                        target.pathname &&
+                    currentRoute.search ===
+                        target.search &&
+                    currentRoute.hash ===
+                        target.hash
+                );
+            },
+
+            metadata: {
+                type:
+                    "deposit-destination",
+
+                destinationId:
+                    destination.id,
+            },
+        });
+
+        metrics
+            .navigationRoutesRegistered +=
+            1;
+
+        return true;
+    }
+
     function register(
         definition
     ) {
@@ -313,6 +391,10 @@
 
         metrics.lastActivityAt =
             Date.now();
+
+        registerNavigationRoute(
+            normalized
+        );
 
         return createSnapshot(
             normalized
@@ -470,11 +552,14 @@
         description:
             "Prepares a cash deposit in the faction armoury.",
 
+        routeId:
+            "deposit:faction-bank",
+
+        routeUrl:
+            "/factions.php?step=your&type=1#/tab=armoury&sub=donate",
+
         pageId:
             "faction",
-
-        pageUrl:
-            "/factions.php?step=your&type=1#/tab=armoury&sub=donate",
 
         amountSelectorPath:
             "FACTION.DEPOSIT_AMOUNT",
@@ -506,10 +591,13 @@
         description:
             "Prepares a deposit into the player's personal vault.",
 
-        pageId:
+        routeId:
             null,
 
-        pageUrl:
+        routeUrl:
+            null,
+
+        pageId:
             null,
 
         amountSelectorPath:
@@ -541,10 +629,13 @@
         description:
             "Prepares an investment deposit through Torn's bank.",
 
-        pageId:
+        routeId:
             null,
 
-        pageUrl:
+        routeUrl:
+            null,
+
+        pageId:
             null,
 
         amountSelectorPath:
