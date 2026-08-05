@@ -8,8 +8,8 @@
  * services/navigation/index.js
  *
  * Purpose:
- * Provides centralized Torn route registration, navigation, and
- * page-waiting behavior for framework services and applications.
+ * Provides centralized Torn route registration, navigation,
+ * route readiness, and event-driven navigation subscriptions.
  *
  * Responsibilities:
  * - Register named Torn routes
@@ -17,13 +17,17 @@
  * - Identify whether a route is currently active
  * - Navigate to registered routes
  * - Wait for a route or selector to become ready
+ * - Consume DOM navigation-change events
+ * - Notify Navigation Service subscribers
+ * - Wait for navigation, pages, and registered routes
  * - Expose navigation diagnostics and Health information
  *
  * Does NOT:
+ * - Detect browser-history changes directly
+ * - Observe the document body
  * - Fill forms
  * - Click submit or confirmation controls
  * - Contain Protection business rules
- * - Perform restricted gameplay actions
  *
  * Public API:
  * - register()
@@ -33,11 +37,17 @@
  * - isCurrent()
  * - open()
  * - waitFor()
+ * - subscribe()
+ * - unsubscribe()
+ * - waitForNavigation()
+ * - waitForPage()
+ * - waitForRoute()
  * - inspect()
  *
  * Dependencies:
- * - services/dom/pages.js
+ * - services/dom/pages/index.js
  * - services/dom/navigation.js
+ * - core/events.js
  * - core/logger.js
  * - core/errors.js
  * - core/health.js
@@ -66,12 +76,14 @@
 
     const {
         dom,
+        events,
         logger,
         errors,
         health,
     } = services;
 
     const {
+        EVENTS,
         HEALTH_STATES,
     } = constants;
 
@@ -82,6 +94,18 @@
     ) {
         console.error(
             "[TACTIC Navigation] DOM route service is unavailable."
+        );
+
+        return;
+    }
+
+    if (
+        !events ||
+        typeof events.on !==
+            "function"
+    ) {
+        console.error(
+            "[TACTIC Navigation] Events service is unavailable."
         );
 
         return;
@@ -98,6 +122,15 @@
 
     const routes =
         new Map();
+
+    const subscribers =
+        new Map();
+
+    let nextSubscriberId =
+        1;
+
+    let removeDomNavigationListener =
+        null;
 
     const metrics = {
         startedAt:
@@ -127,6 +160,48 @@
         waitTimeouts:
             0,
 
+        subscriptions:
+            0,
+
+        unsubscriptions:
+            0,
+
+        navigationEventsReceived:
+            0,
+
+        subscriberNotifications:
+            0,
+
+        subscriberErrors:
+            0,
+
+        navigationWaits:
+            0,
+
+        navigationWaitResolutions:
+            0,
+
+        navigationWaitTimeouts:
+            0,
+
+        pageWaits:
+            0,
+
+        pageWaitResolutions:
+            0,
+
+        pageWaitTimeouts:
+            0,
+
+        routeEventWaits:
+            0,
+
+        routeEventWaitResolutions:
+            0,
+
+        routeEventWaitTimeouts:
+            0,
+
         lastActivityAt:
             Date.now(),
 
@@ -139,7 +214,16 @@
         lastWaitAt:
             null,
 
+        lastEventAt:
+            null,
+
+        lastEvent:
+            null,
+
         lastResult:
+            null,
+
+        lastError:
             null,
     };
 
@@ -190,13 +274,28 @@
                     )
                 );
             } catch {
-                return {
-                    ...value,
-                };
+                return value;
             }
         }
 
         return value;
+    }
+
+    function createErrorSnapshot(
+        error
+    ) {
+        return {
+            name:
+                error?.name ||
+                "Error",
+
+            message:
+                error?.message ||
+                String(error),
+
+            timestamp:
+                Date.now(),
+        };
     }
 
     function normalizeRouteId(
@@ -227,6 +326,37 @@
         }
 
         return normalized;
+    }
+
+    function normalizePageId(
+        pageId
+    ) {
+        if (
+            typeof pageId !==
+                "string" ||
+            !pageId.trim()
+        ) {
+            throw new TypeError(
+                "Navigation page ID must be a non-empty string."
+            );
+        }
+
+        return pageId
+            .trim()
+            .toLowerCase();
+    }
+
+    function normalizeTimeout(
+        value
+    ) {
+        return (
+            Number.isSafeInteger(
+                value
+            ) &&
+            value > 0
+                ? value
+                : DEFAULT_TIMEOUT_MS
+        );
     }
 
     function normalizeDefinition(
@@ -264,13 +394,11 @@
                 typeof definition.name ===
                     "string" &&
                 definition.name.trim()
-                    ? definition.name
-                          .trim()
+                    ? definition.name.trim()
                     : id,
 
             url:
-                definition.url
-                    .trim(),
+                definition.url.trim(),
 
             pageId:
                 typeof definition.pageId ===
@@ -278,6 +406,7 @@
                 definition.pageId.trim()
                     ? definition.pageId
                           .trim()
+                          .toLowerCase()
                     : null,
 
             readySelectorPath:
@@ -303,8 +432,7 @@
                     definition.metadata
                 )
                     ? {
-                          ...definition
-                              .metadata,
+                          ...definition.metadata,
                       }
                     : {},
 
@@ -334,8 +462,7 @@
                 route.pageId,
 
             readySelectorPath:
-                route
-                    .readySelectorPath,
+                route.readySelectorPath,
 
             hasCustomMatcher:
                 Boolean(
@@ -377,8 +504,7 @@
                 null,
 
             href:
-                globalThis.location
-                    .href,
+                globalThis.location.href,
 
             timestamp:
                 Date.now(),
@@ -411,12 +537,18 @@
                     routeCount:
                         routes.size,
 
+                    subscriberCount:
+                        subscribers.size,
+
                     lastRouteId:
                         metrics.lastRouteId,
 
                     lastNavigationAt:
+                        metrics.lastNavigationAt,
+
+                    navigationEventsReceived:
                         metrics
-                            .lastNavigationAt,
+                            .navigationEventsReceived,
 
                     ...metadata,
                 },
@@ -444,7 +576,11 @@
             normalized.id;
 
         recordActivity(
-            "register"
+            "register",
+            {
+                routeId:
+                    normalized.id,
+            }
         );
 
         return createSnapshot(
@@ -527,9 +663,10 @@
         urlValue
     ) {
         return new URL(
-            String(urlValue),
-            globalThis.location
-                .origin
+            String(
+                urlValue
+            ),
+            globalThis.location.origin
         );
     }
 
@@ -606,8 +743,7 @@
     ) {
         const selectorPath =
             explicitSelectorPath ||
-            route
-                .readySelectorPath;
+            route.readySelectorPath;
 
         if (!selectorPath) {
             return null;
@@ -662,12 +798,9 @@
         }
 
         const timeoutMs =
-            Number.isSafeInteger(
+            normalizeTimeout(
                 options.timeoutMs
-            ) &&
-            options.timeoutMs > 0
-                ? options.timeoutMs
-                : DEFAULT_TIMEOUT_MS;
+            );
 
         const pollIntervalMs =
             Number.isSafeInteger(
@@ -756,8 +889,7 @@
                         `${route.name} is ready.`,
 
                     href:
-                        globalThis.location
-                            .href,
+                        globalThis.location.href,
                 });
             }
 
@@ -923,6 +1055,675 @@
         });
     }
 
+    function createNavigationEvent(
+        payload
+    ) {
+        return {
+            reason:
+                payload?.reason ||
+                "unknown",
+
+            timestamp:
+                payload?.timestamp ||
+                Date.now(),
+
+            current:
+                cloneValue(
+                    payload?.current ||
+                    dom.getPage?.() ||
+                    dom.detectPage()
+                ),
+
+            previous:
+                cloneValue(
+                    payload?.previous ||
+                    null
+                ),
+
+            navigation:
+                cloneValue(
+                    payload?.navigation ||
+                    dom.getNavigation?.() ||
+                    null
+                ),
+        };
+    }
+
+    function notifySubscriber(
+        subscriber,
+        navigationEvent
+    ) {
+        try {
+            subscriber.callback(
+                cloneValue(
+                    navigationEvent
+                )
+            );
+
+            subscriber.notificationCount +=
+                1;
+
+            subscriber.lastNotifiedAt =
+                Date.now();
+
+            metrics
+                .subscriberNotifications +=
+                1;
+
+            return true;
+        } catch (error) {
+            subscriber.errorCount +=
+                1;
+
+            subscriber.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            metrics.subscriberErrors +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.warn(
+                "Navigation subscriber callback failed",
+                {
+                    subscriberId:
+                        subscriber.id,
+
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
+    function handleDomNavigationChanged(
+        payload
+    ) {
+        metrics.navigationEventsReceived +=
+            1;
+
+        metrics.lastEventAt =
+            Date.now();
+
+        const navigationEvent =
+            createNavigationEvent(
+                payload
+            );
+
+        metrics.lastEvent =
+            cloneValue(
+                navigationEvent
+            );
+
+        for (
+            const subscriber of
+            subscribers.values()
+        ) {
+            notifySubscriber(
+                subscriber,
+                navigationEvent
+            );
+        }
+
+        recordActivity(
+            "navigation-event",
+            {
+                currentPageId:
+                    navigationEvent
+                        .current
+                        ?.id ||
+                    null,
+
+                currentHref:
+                    navigationEvent
+                        .current
+                        ?.route
+                        ?.href ||
+                    null,
+            }
+        );
+    }
+
+    function subscribe(
+        callback,
+        options = {}
+    ) {
+        if (
+            typeof callback !==
+                "function"
+        ) {
+            throw new TypeError(
+                "Navigation subscriber must be a function."
+            );
+        }
+
+        const subscriber = {
+            id:
+                nextSubscriberId++,
+
+            callback,
+
+            createdAt:
+                Date.now(),
+
+            notificationCount:
+                0,
+
+            errorCount:
+                0,
+
+            lastNotifiedAt:
+                null,
+
+            lastError:
+                null,
+
+            metadata:
+                isPlainObject(
+                    options.metadata
+                )
+                    ? {
+                          ...options.metadata,
+                      }
+                    : {},
+        };
+
+        subscribers.set(
+            subscriber.id,
+            subscriber
+        );
+
+        metrics.subscriptions +=
+            1;
+
+        recordActivity(
+            "subscribe",
+            {
+                subscriberId:
+                    subscriber.id,
+            }
+        );
+
+        if (
+            options.emitInitial ===
+            true
+        ) {
+            queueMicrotask(
+                () => {
+                    if (
+                        subscribers.has(
+                            subscriber.id
+                        )
+                    ) {
+                        notifySubscriber(
+                            subscriber,
+                            createNavigationEvent({
+                                reason:
+                                    "subscription-initial",
+
+                                current:
+                                    dom.getPage?.() ||
+                                    dom.detectPage(),
+
+                                previous:
+                                    null,
+
+                                navigation:
+                                    dom.getNavigation?.() ||
+                                    null,
+                            })
+                        );
+                    }
+                }
+            );
+        }
+
+        return subscriber.id;
+    }
+
+    function unsubscribe(
+        subscriberId
+    ) {
+        const numericId =
+            Number(
+                subscriberId
+            );
+
+        if (
+            !Number.isSafeInteger(
+                numericId
+            )
+        ) {
+            return false;
+        }
+
+        const removed =
+            subscribers.delete(
+                numericId
+            );
+
+        if (removed) {
+            metrics.unsubscriptions +=
+                1;
+
+            recordActivity(
+                "unsubscribe",
+                {
+                    subscriberId:
+                        numericId,
+                }
+            );
+        }
+
+        return removed;
+    }
+
+    function createWaitPromise({
+        timeoutMs,
+        test,
+        timeoutReason,
+        timeoutMessage,
+        onStart,
+        onResolve,
+        onTimeout,
+    }) {
+        return new Promise(
+            (resolve) => {
+                const startedAt =
+                    Date.now();
+
+                let settled =
+                    false;
+
+                let timeoutHandle =
+                    null;
+
+                let subscriberId =
+                    null;
+
+                function cleanup() {
+                    if (
+                        subscriberId !==
+                        null
+                    ) {
+                        unsubscribe(
+                            subscriberId
+                        );
+
+                        subscriberId =
+                            null;
+                    }
+
+                    if (
+                        timeoutHandle !==
+                        null
+                    ) {
+                        clearTimeout(
+                            timeoutHandle
+                        );
+
+                        timeoutHandle =
+                            null;
+                    }
+                }
+
+                function finish(
+                    result
+                ) {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled =
+                        true;
+
+                    cleanup();
+
+                    resolve(
+                        result
+                    );
+                }
+
+                onStart?.();
+
+                subscriberId =
+                    subscribe(
+                        (
+                            navigationEvent
+                        ) => {
+                            let matched =
+                                false;
+
+                            try {
+                                matched =
+                                    test(
+                                        navigationEvent
+                                    ) ===
+                                    true;
+                            } catch (error) {
+                                metrics.lastError =
+                                    createErrorSnapshot(
+                                        error
+                                    );
+                            }
+
+                            if (!matched) {
+                                return;
+                            }
+
+                            onResolve?.();
+
+                            finish({
+                                success:
+                                    true,
+
+                                ready:
+                                    true,
+
+                                reason:
+                                    "matched",
+
+                                waitedMs:
+                                    Date.now() -
+                                    startedAt,
+
+                                event:
+                                    navigationEvent,
+                            });
+                        },
+                        {
+                            metadata: {
+                                purpose:
+                                    "navigation-wait",
+                            },
+                        }
+                    );
+
+                timeoutHandle =
+                    setTimeout(
+                        () => {
+                            onTimeout?.();
+
+                            finish({
+                                success:
+                                    false,
+
+                                ready:
+                                    false,
+
+                                reason:
+                                    timeoutReason,
+
+                                message:
+                                    timeoutMessage,
+
+                                waitedMs:
+                                    Date.now() -
+                                    startedAt,
+
+                                event:
+                                    null,
+                            });
+                        },
+                        timeoutMs
+                    );
+            }
+        );
+    }
+
+    function waitForNavigation(
+        options = {}
+    ) {
+        const timeoutMs =
+            normalizeTimeout(
+                options.timeoutMs
+            );
+
+        metrics.navigationWaits +=
+            1;
+
+        return createWaitPromise({
+            timeoutMs,
+
+            test:
+                typeof options.test ===
+                    "function"
+                    ? options.test
+                    : () =>
+                          true,
+
+            timeoutReason:
+                "navigation-timeout",
+
+            timeoutMessage:
+                "Timed out waiting for a navigation change.",
+
+            onResolve() {
+                metrics
+                    .navigationWaitResolutions +=
+                    1;
+            },
+
+            onTimeout() {
+                metrics
+                    .navigationWaitTimeouts +=
+                    1;
+            },
+        });
+    }
+
+    function waitForPage(
+        pageId,
+        options = {}
+    ) {
+        const normalizedPageId =
+            normalizePageId(
+                pageId
+            );
+
+        const currentPage =
+            dom.getPage?.() ||
+            dom.detectPage();
+
+        if (
+            currentPage?.id ===
+            normalizedPageId
+        ) {
+            return Promise.resolve({
+                success:
+                    true,
+
+                ready:
+                    true,
+
+                reason:
+                    "already-current",
+
+                waitedMs:
+                    0,
+
+                event: {
+                    reason:
+                        "already-current",
+
+                    timestamp:
+                        Date.now(),
+
+                    current:
+                        cloneValue(
+                            currentPage
+                        ),
+
+                    previous:
+                        null,
+
+                    navigation:
+                        cloneValue(
+                            dom.getNavigation?.() ||
+                            null
+                        ),
+                },
+            });
+        }
+
+        metrics.pageWaits +=
+            1;
+
+        return createWaitPromise({
+            timeoutMs:
+                normalizeTimeout(
+                    options.timeoutMs
+                ),
+
+            test:
+                (
+                    navigationEvent
+                ) =>
+                    navigationEvent
+                        .current
+                        ?.id ===
+                    normalizedPageId,
+
+            timeoutReason:
+                "page-timeout",
+
+            timeoutMessage:
+                `Timed out waiting for page "${normalizedPageId}".`,
+
+            onResolve() {
+                metrics
+                    .pageWaitResolutions +=
+                    1;
+            },
+
+            onTimeout() {
+                metrics
+                    .pageWaitTimeouts +=
+                    1;
+            },
+        });
+    }
+
+    function waitForRoute(
+        routeId,
+        options = {}
+    ) {
+        const normalizedRouteId =
+            normalizeRouteId(
+                routeId
+            );
+
+        if (
+            isCurrent(
+                normalizedRouteId
+            )
+        ) {
+            return Promise.resolve({
+                success:
+                    true,
+
+                ready:
+                    true,
+
+                routeId:
+                    normalizedRouteId,
+
+                reason:
+                    "already-current",
+
+                waitedMs:
+                    0,
+
+                event:
+                    null,
+            });
+        }
+
+        metrics.routeEventWaits +=
+            1;
+
+        return createWaitPromise({
+            timeoutMs:
+                normalizeTimeout(
+                    options.timeoutMs
+                ),
+
+            test() {
+                return isCurrent(
+                    normalizedRouteId
+                );
+            },
+
+            timeoutReason:
+                "route-event-timeout",
+
+            timeoutMessage:
+                `Timed out waiting for route "${normalizedRouteId}".`,
+
+            onResolve() {
+                metrics
+                    .routeEventWaitResolutions +=
+                    1;
+            },
+
+            onTimeout() {
+                metrics
+                    .routeEventWaitTimeouts +=
+                    1;
+            },
+        }).then(
+            (result) => ({
+                ...result,
+
+                routeId:
+                    normalizedRouteId,
+            })
+        );
+    }
+
+    function inspectSubscribers() {
+        return [
+            ...subscribers.values(),
+        ].map(
+            (subscriber) => ({
+                id:
+                    subscriber.id,
+
+                createdAt:
+                    subscriber.createdAt,
+
+                notificationCount:
+                    subscriber
+                        .notificationCount,
+
+                errorCount:
+                    subscriber.errorCount,
+
+                lastNotifiedAt:
+                    subscriber
+                        .lastNotifiedAt,
+
+                lastError:
+                    subscriber.lastError
+                        ? {
+                              ...subscriber
+                                  .lastError,
+                          }
+                        : null,
+
+                metadata: {
+                    ...subscriber.metadata,
+                },
+            })
+        );
+    }
+
     function inspect() {
         return {
             service:
@@ -936,8 +1737,7 @@
                 metrics.startedAt,
 
             currentHref:
-                globalThis.location
-                    .href,
+                globalThis.location.href,
 
             currentPage:
                 dom.getPage?.() ||
@@ -949,15 +1749,39 @@
             routes:
                 list(),
 
+            subscriberCount:
+                subscribers.size,
+
+            subscribers:
+                inspectSubscribers(),
+
+            domNavigationListenerActive:
+                typeof removeDomNavigationListener ===
+                "function",
+
             metrics: {
                 ...metrics,
+
+                lastEvent:
+                    metrics.lastEvent
+                        ? cloneValue(
+                              metrics.lastEvent
+                          )
+                        : null,
 
                 lastResult:
                     metrics.lastResult
                         ? cloneValue(
-                              metrics
-                                  .lastResult
+                              metrics.lastResult
                           )
+                        : null,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
                         : null,
             },
 
@@ -971,6 +1795,13 @@
         };
     }
 
+    removeDomNavigationListener =
+        events.on(
+            EVENTS.DOM
+                .NAVIGATION_CHANGED,
+            handleDomNavigationChanged
+        );
+
     TACTIC.services.navigation =
         Object.freeze({
             register,
@@ -981,6 +1812,13 @@
             isCurrent,
             open,
             waitFor,
+
+            subscribe,
+            unsubscribe,
+
+            waitForNavigation,
+            waitForPage,
+            waitForRoute,
 
             inspect,
         });
@@ -1005,12 +1843,22 @@
             routeCount:
                 routes.size,
 
+            eventDriven:
+                true,
+
+            domNavigationListener:
+                true,
+
             requiresHeartbeat:
                 false,
         },
     });
 
     logger?.info(
-        "Navigation service loaded"
+        "Navigation service loaded",
+        {
+            eventDriven:
+                true,
+        }
     );
 })();
