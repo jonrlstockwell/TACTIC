@@ -9,23 +9,54 @@
  *
  * Purpose:
  * Provides reusable, capability-controlled deposit preparation,
- * including destination navigation and safe form filling.
+ * including destination navigation and safe page preparation.
  *
  * Responsibilities:
  * - Validate deposit preparation requests
- * - Navigate to verified deposit destinations when necessary
- * - Wait for destination pages and amount fields
- * - Fill verified deposit amount fields
- * - Dispatch input and change events
- * - Highlight submit controls for manual review
- * - Enforce the deposit.prepare capability
+ * - Enforce deposit preparation capabilities
+ * - Resolve verified deposit destinations
+ * - Navigate to deposit destinations when necessary
+ * - Preserve pending preparation across full-page navigation
+ * - Resolve registered DOM page helpers
+ * - Ask page helpers to fill and highlight deposit controls
+ * - Notify the user when a deposit is ready for manual review
+ * - Expose deposit diagnostics and Health information
  *
  * Does NOT:
- * - Submit deposit forms
+ * - Query Torn deposit controls directly
+ * - Contain Torn-specific selectors
+ * - Set input values directly
  * - Click deposit buttons
- * - Confirm dialogs
- * - Automatically finalize transactions
+ * - Submit deposit forms
+ * - Confirm transactions
  * - Contain Protection business rules
+ *
+ * Public API:
+ * - prepare()
+ * - resumePending()
+ * - canPrepare()
+ * - getDestination()
+ * - listDestinations()
+ * - submit()
+ * - confirm()
+ * - inspect()
+ *
+ * Dependencies:
+ * - services/capabilities/index.js
+ * - services/deposit/destinations.js
+ * - services/navigation/index.js
+ * - services/dom/index.js
+ * - services/dom/pages/index.js
+ * - services/dom/pages/faction.js
+ * - services/storage.js
+ * - services/notifications/index.js
+ * - core/logger.js
+ * - core/errors.js
+ * - core/health.js
+ *
+ * Safety boundary:
+ * - Deposit preparation may navigate and fill a verified form.
+ * - The final submit and confirmation remain user actions.
  *
  * ============================================================
  */
@@ -54,6 +85,7 @@
         depositDestinations,
         navigation,
         dom,
+        storage,
         logger,
         notifications,
         errors,
@@ -68,7 +100,8 @@
         !capabilities ||
         !depositDestinations ||
         !navigation ||
-        !dom
+        !dom ||
+        !dom.pages
     ) {
         console.error(
             "[TACTIC Deposit] Required dependencies are unavailable."
@@ -92,11 +125,14 @@
     const DEFAULT_WAIT_TIMEOUT_MS =
         15_000;
 
+    const DEFAULT_HELPER_ID_BY_DESTINATION =
+        Object.freeze({
+            "faction-bank":
+                "faction-bank",
+        });
+
     const PENDING_STORAGE_KEY =
         "deposit:pending-preparation";
-
-    const HIGHLIGHT_ATTRIBUTE =
-        "data-tactic-deposit-highlight";
 
     const metrics = {
         startedAt:
@@ -123,16 +159,28 @@
         unsupportedDestinations:
             0,
 
-        unavailableSelectors:
+        helperResolutions:
             0,
 
-        unavailableFields:
+        helperResolutionFailures:
             0,
 
-        valueVerificationFailures:
+        helperWaits:
             0,
 
-        submitHighlights:
+        helperWaitFailures:
+            0,
+
+        helperPreparationFailures:
+            0,
+
+        pendingPreparationsSaved:
+            0,
+
+        pendingPreparationsCleared:
+            0,
+
+        notificationsSent:
             0,
 
         lastActivityAt:
@@ -144,10 +192,16 @@
         lastDestination:
             null,
 
+        lastHelperId:
+            null,
+
         lastAmount:
             null,
 
         lastResult:
+            null,
+
+        lastError:
             null,
     };
 
@@ -194,6 +248,27 @@
         return value;
     }
 
+    function createErrorSnapshot(
+        error
+    ) {
+        if (!error) {
+            return null;
+        }
+
+        return {
+            name:
+                error?.name ||
+                "Error",
+
+            message:
+                error?.message ||
+                String(error),
+
+            timestamp:
+                Date.now(),
+        };
+    }
+
     function createResult(
         values = {}
     ) {
@@ -222,6 +297,9 @@
             destinationName:
                 null,
 
+            helperId:
+                null,
+
             amount:
                 null,
 
@@ -231,14 +309,25 @@
             message:
                 null,
 
-            selector:
-                null,
-
             submitHighlighted:
                 false,
 
+            helperResult:
+                null,
+
             timestamp:
                 Date.now(),
+
+            safety: {
+                submitClicked:
+                    false,
+
+                confirmationClicked:
+                    false,
+
+                userSubmissionRequired:
+                    true,
+            },
 
             ...values,
         };
@@ -269,6 +358,10 @@
                         metrics
                             .lastDestination,
 
+                    lastHelperId:
+                        metrics
+                            .lastHelperId,
+
                     lastAmount:
                         metrics.lastAmount,
 
@@ -278,6 +371,11 @@
 
                     prepared:
                         metrics.prepared,
+
+                    pending:
+                        Boolean(
+                            getPendingPreparation()
+                        ),
 
                     ...metadata,
                 },
@@ -289,7 +387,9 @@
         amount
     ) {
         const numeric =
-            Number(amount);
+            Number(
+                amount
+            );
 
         if (
             !Number.isSafeInteger(
@@ -303,19 +403,51 @@
         return numeric;
     }
 
+    function normalizeTimeout(
+        timeoutMs
+    ) {
+        return (
+            Number.isSafeInteger(
+                timeoutMs
+            ) &&
+            timeoutMs > 0
+                ? timeoutMs
+                : DEFAULT_WAIT_TIMEOUT_MS
+        );
+    }
+
     function getStorage() {
-        return TACTIC.services
-            .storage;
+        return (
+            storage ||
+            TACTIC.services
+                .storage ||
+            null
+        );
     }
 
     function savePendingPreparation(
         request
     ) {
-        getStorage()?.set(
+        const storageService =
+            getStorage();
+
+        if (
+            !storageService ||
+            typeof storageService.set !==
+                "function"
+        ) {
+            return false;
+        }
+
+        storageService.set(
             PENDING_STORAGE_KEY,
             {
                 destination:
                     request.destination,
+
+                helperId:
+                    request.helperId ||
+                    null,
 
                 amount:
                     request.amount,
@@ -329,17 +461,37 @@
                         .highlightSubmit !==
                     false,
 
+                timeoutMs:
+                    normalizeTimeout(
+                        request.timeoutMs
+                    ),
+
                 createdAt:
                     Date.now(),
             }
         );
 
+        metrics
+            .pendingPreparationsSaved +=
+            1;
+
         return true;
     }
 
     function getPendingPreparation() {
+        const storageService =
+            getStorage();
+
+        if (
+            !storageService ||
+            typeof storageService.get !==
+                "function"
+        ) {
+            return null;
+        }
+
         const pending =
-            getStorage()?.get(
+            storageService.get(
                 PENDING_STORAGE_KEY,
                 null
             );
@@ -347,155 +499,54 @@
         return (
             pending &&
             typeof pending ===
-                "object"
+                "object" &&
+            !Array.isArray(
+                pending
+            )
                 ? pending
                 : null
         );
     }
 
     function clearPendingPreparation() {
-        getStorage()?.remove(
-            PENDING_STORAGE_KEY
-        );
-    }
+        const storageService =
+            getStorage();
 
-    function setNativeValue(
-        input,
-        value
-    ) {
-        const prototype =
-            Object.getPrototypeOf(
-                input
-            );
-
-        const descriptor =
-            Object.getOwnPropertyDescriptor(
-                prototype,
-                "value"
-            );
+        if (!storageService) {
+            return false;
+        }
 
         if (
-            descriptor &&
-            typeof descriptor.set ===
+            typeof storageService.remove ===
                 "function"
         ) {
-            descriptor.set.call(
-                input,
-                value
+            storageService.remove(
+                PENDING_STORAGE_KEY
             );
-        } else {
-            input.value =
-                value;
+
+            metrics
+                .pendingPreparationsCleared +=
+                1;
+
+            return true;
         }
 
-        input.dispatchEvent(
-            new InputEvent(
-                "input",
-                {
-                    bubbles:
-                        true,
-
-                    inputType:
-                        "insertText",
-
-                    data:
-                        value,
-                }
-            )
-        );
-
-        input.dispatchEvent(
-            new Event(
-                "change",
-                {
-                    bubbles:
-                        true,
-                }
-            )
-        );
-    }
-
-    function clearExistingHighlights() {
-        const highlighted =
-            document.querySelectorAll(
-                `[${HIGHLIGHT_ATTRIBUTE}="true"]`
-            );
-
-        for (
-            const element of
-            highlighted
-        ) {
-            element.style.removeProperty(
-                "outline"
-            );
-
-            element.style.removeProperty(
-                "outline-offset"
-            );
-
-            element.removeAttribute(
-                HIGHLIGHT_ATTRIBUTE
-            );
-        }
-    }
-
-    function highlightSubmit(
-        destination
-    ) {
         if (
-            !destination
-                .submitSelectorPath
+            typeof storageService.delete ===
+                "function"
         ) {
-            return false;
-        }
-
-        const selector =
-            dom.getSelector?.(
-                destination
-                    .submitSelectorPath
+            storageService.delete(
+                PENDING_STORAGE_KEY
             );
 
-        if (!selector) {
-            return false;
+            metrics
+                .pendingPreparationsCleared +=
+                1;
+
+            return true;
         }
 
-        const submitControl =
-            dom.find(
-                selector
-            );
-
-        if (!submitControl) {
-            return false;
-        }
-
-        clearExistingHighlights();
-
-        submitControl.setAttribute(
-            HIGHLIGHT_ATTRIBUTE,
-            "true"
-        );
-
-        submitControl.style.outline =
-            "3px solid #f5a623";
-
-        submitControl.style.outlineOffset =
-            "3px";
-
-        submitControl.scrollIntoView({
-            behavior:
-                "smooth",
-
-            block:
-                "center",
-
-            inline:
-                "nearest",
-        });
-
-        metrics.submitHighlights +=
-            1;
-
-        return true;
+        return false;
     }
 
     function getDestination(
@@ -514,6 +565,68 @@
         );
     }
 
+    function resolveHelperId(
+        destination
+    ) {
+        if (!destination) {
+            return null;
+        }
+
+        const configuredHelperId =
+            destination.helperId ||
+            destination.pageHelperId ||
+            destination.domHelperId;
+
+        if (
+            typeof configuredHelperId ===
+                "string" &&
+            configuredHelperId.trim()
+        ) {
+            return configuredHelperId
+                .trim()
+                .toLowerCase();
+        }
+
+        return (
+            DEFAULT_HELPER_ID_BY_DESTINATION[
+                destination.id
+            ] ||
+            null
+        );
+    }
+
+    function getHelper(
+        helperId
+    ) {
+        metrics.helperResolutions +=
+            1;
+
+        if (
+            typeof helperId !==
+                "string" ||
+            !helperId.trim()
+        ) {
+            metrics
+                .helperResolutionFailures +=
+                1;
+
+            return null;
+        }
+
+        const helper =
+            dom.pages.getHelper(
+                helperId
+            );
+
+        if (!helper) {
+            metrics
+                .helperResolutionFailures +=
+                1;
+        }
+
+        return helper;
+    }
+
     function canPrepare(
         destinationId
     ) {
@@ -530,12 +643,25 @@
                 destinationId
             );
 
+        if (
+            !destination ||
+            !destination.verified ||
+            !destination.fillSupported ||
+            !destination.routeId
+        ) {
+            return false;
+        }
+
+        const helperId =
+            resolveHelperId(
+                destination
+            );
+
         return Boolean(
-            destination &&
-            destination.verified &&
-            destination.fillSupported &&
-            destination
-                .amountSelectorPath
+            helperId &&
+            dom.pages.hasHelper(
+                helperId
+            )
         );
     }
 
@@ -573,8 +699,6 @@
         if (
             !destination.verified ||
             !destination.fillSupported ||
-            !destination
-                .amountSelectorPath ||
             !destination.routeId
         ) {
             metrics
@@ -599,7 +723,74 @@
                             "destination-not-mapped",
 
                         message:
-                            `${destination.name} preparation is unavailable until its route and amount field are verified.`,
+                            `${destination.name} preparation is unavailable until its route and page helper are verified.`,
+                    }),
+            };
+        }
+
+        const helperId =
+            resolveHelperId(
+                destination
+            );
+
+        if (!helperId) {
+            metrics
+                .unsupportedDestinations +=
+                1;
+
+            return {
+                valid:
+                    false,
+
+                result:
+                    createResult({
+                        destination:
+                            destination.id,
+
+                        destinationName:
+                            destination.name,
+
+                        amount,
+
+                        reason:
+                            "helper-not-configured",
+
+                        message:
+                            `${destination.name} does not have a registered DOM page helper.`,
+                    }),
+            };
+        }
+
+        if (
+            !dom.pages.hasHelper(
+                helperId
+            )
+        ) {
+            metrics
+                .helperResolutionFailures +=
+                1;
+
+            return {
+                valid:
+                    false,
+
+                result:
+                    createResult({
+                        destination:
+                            destination.id,
+
+                        destinationName:
+                            destination.name,
+
+                        helperId,
+
+                        amount,
+
+                        reason:
+                            "helper-unavailable",
+
+                        message:
+                            `The DOM page helper for ${destination.name} is unavailable.`,
                     }),
             };
         }
@@ -609,27 +800,226 @@
                 true,
 
             destination,
+
+            helperId,
         };
     }
 
-    async function fillAmount({
+    async function waitForHelper(
+        helper,
+        helperId,
+        timeoutMs
+    ) {
+        metrics.helperWaits +=
+            1;
+
+        if (
+            typeof helper.waitUntilReady !==
+                "function"
+        ) {
+            if (
+                typeof helper.isReady ===
+                    "function"
+            ) {
+                const readiness =
+                    helper.isReady();
+
+                return {
+                    ...readiness,
+
+                    waitedMs:
+                        0,
+                };
+            }
+
+            return {
+                ready:
+                    true,
+
+                reason:
+                    "helper-has-no-readiness-check",
+
+                waitedMs:
+                    0,
+            };
+        }
+
+        try {
+            return await helper.waitUntilReady({
+                timeoutMs,
+
+                rejectOnTimeout:
+                    false,
+            });
+        } catch (error) {
+            metrics.helperWaitFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.warn(
+                "Deposit page helper readiness check failed",
+                {
+                    helperId,
+                    timeoutMs,
+                    error,
+                }
+            );
+
+            return {
+                ready:
+                    false,
+
+                reason:
+                    "helper-wait-failed",
+
+                waitedMs:
+                    null,
+
+                error:
+                    createErrorSnapshot(
+                        error
+                    ),
+            };
+        }
+    }
+
+    function notifyPrepared(
         destination,
+        amount
+    ) {
+        if (
+            !notifications ||
+            typeof notifications.success !==
+                "function"
+        ) {
+            return false;
+        }
+
+        notifications.success(
+            `${destination.name} amount prepared. Review the amount and submit it manually.`,
+            {
+                title:
+                    "Deposit Ready",
+
+                group:
+                    "deposit",
+
+                persistent:
+                    true,
+
+                metadata: {
+                    destination:
+                        destination.id,
+
+                    amount,
+
+                    submitted:
+                        false,
+
+                    confirmed:
+                        false,
+                },
+            }
+        );
+
+        metrics.notificationsSent +=
+            1;
+
+        return true;
+    }
+
+    function reportHelperFailure({
+        destination,
+        helperId,
+        amount,
+        helperResult,
+    }) {
+        const message =
+            helperResult?.error
+                ?.message ||
+            helperResult?.message ||
+            `The ${destination.name} page helper could not prepare the deposit.`;
+
+        const error =
+            new Error(
+                message
+            );
+
+        error.name =
+            helperResult?.error
+                ?.name ||
+            "DepositPageHelperError";
+
+        errors?.report({
+            code:
+                TACTIC.ERROR_CODES
+                    ?.DOM
+                    ?.OBSERVER_FAILED ||
+                TACTIC.ERROR_CODES
+                    ?.GENERAL
+                    ?.INTERNAL ||
+                "INTERNAL",
+
+            severity:
+                TACTIC.SEVERITY
+                    ?.WARNING ||
+                "warning",
+
+            service:
+                "deposit",
+
+            message:
+                `Deposit preparation failed for ${destination.name}.`,
+
+            details: {
+                destination:
+                    destination.id,
+
+                helperId,
+
+                amount,
+
+                helperReason:
+                    helperResult?.reason ||
+                    null,
+
+                helperResult:
+                    cloneValue(
+                        helperResult
+                    ),
+            },
+
+            error,
+
+            recoverable:
+                true,
+
+            retryable:
+                true,
+
+            recovery:
+                "Verify the destination page is fully loaded and that its DOM page helper selectors remain valid.",
+        });
+    }
+
+    async function prepareCurrentPage({
+        destination,
+        helperId,
         amount,
         timeoutMs,
         highlightSubmitControl,
         notify,
     }) {
-        const amountSelector =
-            dom.getSelector?.(
-                destination
-                    .amountSelectorPath
+        const helper =
+            getHelper(
+                helperId
             );
 
-        if (!amountSelector) {
-            metrics
-                .unavailableSelectors +=
-                1;
-
+        if (!helper) {
             return createResult({
                 destination:
                     destination.id,
@@ -637,76 +1027,83 @@
                 destinationName:
                     destination.name,
 
-                amount,
-
-                reason:
-                    "selector-unavailable",
-
-                message:
-                    `The ${destination.name} amount selector is unavailable.`,
-            });
-        }
-
-        const input =
-            await dom.waitFor(
-                amountSelector,
-                {
-                    timeoutMs,
-
-                    rejectOnTimeout:
-                        false,
-
-                    visible:
-                        true,
-                }
-            );
-
-        if (!input) {
-            metrics.unavailableFields +=
-                1;
-
-            return createResult({
-                destination:
-                    destination.id,
-
-                destinationName:
-                    destination.name,
+                helperId,
 
                 amount,
 
-                selector:
-                    amountSelector,
-
                 reason:
-                    "amount-field-not-found",
+                    "helper-unavailable",
 
                 message:
-                    `The ${destination.name} amount field could not be found.`,
+                    `The ${destination.name} DOM page helper is unavailable.`,
             });
         }
 
-        setNativeValue(
-            input,
-            String(amount)
-        );
+        metrics.lastHelperId =
+            helperId;
 
-        const actualValue =
-            normalizeAmount(
-                String(
-                    input.value ||
-                    ""
-                ).replace(
-                    /[^0-9]/g,
-                    ""
-                )
+        const readiness =
+            await waitForHelper(
+                helper,
+                helperId,
+                timeoutMs
             );
 
         if (
-            actualValue !==
-            amount
+            readiness?.ready !==
+            true
+        ) {
+            metrics.helperWaitFailures +=
+                1;
+
+            recordActivity(
+                "helper-not-ready",
+                {
+                    destination:
+                        destination.id,
+
+                    helperId,
+
+                    readiness:
+                        cloneValue(
+                            readiness
+                        ),
+                }
+            );
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                helperId,
+
+                amount,
+
+                reason:
+                    readiness?.reason ||
+                    "page-not-ready",
+
+                message:
+                    `The ${destination.name} deposit controls did not become ready.`,
+
+                helperResult: {
+                    readiness:
+                        cloneValue(
+                            readiness
+                        ),
+                },
+            });
+        }
+
+        if (
+            typeof helper.prepareDeposit !==
+                "function"
         ) {
             metrics
-                .valueVerificationFailures +=
+                .helperPreparationFailures +=
                 1;
 
             return createResult({
@@ -716,28 +1113,175 @@
                 destinationName:
                     destination.name,
 
+                helperId,
+
                 amount,
 
-                selector:
-                    amountSelector,
+                reason:
+                    "helper-method-unavailable",
+
+                message:
+                    `The ${destination.name} helper does not support deposit preparation.`,
+            });
+        }
+
+        let helperResult;
+
+        try {
+            helperResult =
+                await helper.prepareDeposit(
+                    amount,
+                    {
+                        highlightSubmit:
+                            highlightSubmitControl,
+                    }
+                );
+        } catch (error) {
+            metrics
+                .helperPreparationFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            reportHelperFailure({
+                destination,
+                helperId,
+                amount,
+
+                helperResult: {
+                    reason:
+                        "helper-threw",
+
+                    error:
+                        metrics.lastError,
+                },
+            });
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                helperId,
+
+                amount,
+
+                reason:
+                    "helper-threw",
+
+                message:
+                    error?.message ||
+                    `The ${destination.name} helper failed.`,
+
+                helperResult: {
+                    error:
+                        createErrorSnapshot(
+                            error
+                        ),
+                },
+            });
+        }
+
+        if (
+            !helperResult ||
+            helperResult.success !==
+                true ||
+            helperResult.prepared !==
+                true
+        ) {
+            metrics
+                .helperPreparationFailures +=
+                1;
+
+            reportHelperFailure({
+                destination,
+                helperId,
+                amount,
+                helperResult,
+            });
+
+            recordActivity(
+                "helper-preparation-failed",
+                {
+                    destination:
+                        destination.id,
+
+                    helperId,
+
+                    reason:
+                        helperResult
+                            ?.reason ||
+                        "unknown",
+                }
+            );
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                helperId,
+
+                amount,
+
+                reason:
+                    helperResult?.reason ||
+                    "helper-preparation-failed",
+
+                message:
+                    helperResult?.message ||
+                    `The ${destination.name} helper could not prepare the deposit.`,
+
+                helperResult:
+                    cloneValue(
+                        helperResult
+                    ),
+            });
+        }
+
+        const preparedAmount =
+            normalizeAmount(
+                helperResult.amount
+            );
+
+        if (
+            preparedAmount !==
+            amount
+        ) {
+            metrics
+                .helperPreparationFailures +=
+                1;
+
+            return createResult({
+                destination:
+                    destination.id,
+
+                destinationName:
+                    destination.name,
+
+                helperId,
+
+                amount,
 
                 reason:
                     "value-verification-failed",
 
                 message:
-                    "The deposit field did not retain the requested amount.",
+                    "The page helper did not confirm the requested deposit amount.",
+
+                helperResult:
+                    cloneValue(
+                        helperResult
+                    ),
             });
         }
-
-        input.focus();
-
-        input.select?.();
-
-        const submitHighlighted =
-            highlightSubmitControl &&
-            highlightSubmit(
-                destination
-            );
 
         metrics.prepared +=
             1;
@@ -745,13 +1289,24 @@
         metrics.lastPreparedAt =
             Date.now();
 
+        metrics.lastError =
+            null;
+
         clearPendingPreparation();
+
+        const submitHighlighted =
+            helperResult
+                .highlightResult
+                ?.success ===
+            true;
 
         logger?.info(
             "Deposit amount prepared",
             {
                 destination:
                     destination.id,
+
+                helperId,
 
                 amount,
 
@@ -760,28 +1315,26 @@
 
                 confirmed:
                     false,
+
+                submitHighlighted,
             }
         );
 
         if (notify) {
-            notifications?.success(
-                `${destination.name} amount prepared. Review the amount and submit it manually.`,
-                {
-                    title:
-                        "Deposit Ready",
-
-                    group:
-                        "deposit",
-
-                    persistent:
-                        true,
-                }
+            notifyPrepared(
+                destination,
+                amount
             );
         }
 
         recordActivity(
             "prepared",
             {
+                destination:
+                    destination.id,
+
+                helperId,
+
                 submitHighlighted,
             }
         );
@@ -805,10 +1358,9 @@
             destinationName:
                 destination.name,
 
-            amount,
+            helperId,
 
-            selector:
-                amountSelector,
+            amount,
 
             submitHighlighted,
 
@@ -817,6 +1369,31 @@
 
             message:
                 "The amount was filled successfully. The user must submit the deposit manually.",
+
+            helperResult:
+                cloneValue(
+                    helperResult
+                ),
+
+            safety: {
+                submitClicked:
+                    helperResult
+                        .safety
+                        ?.submitClicked ===
+                    true,
+
+                confirmationClicked:
+                    helperResult
+                        .safety
+                        ?.confirmationClicked ===
+                    true,
+
+                userSubmissionRequired:
+                    helperResult
+                        .safety
+                        ?.userSubmissionRequired !==
+                    false,
+            },
         });
     }
 
@@ -867,6 +1444,11 @@
             metrics.authorizationFailures +=
                 1;
 
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
             return createResult({
                 destination:
                     destinationId ||
@@ -912,22 +1494,24 @@
             return validation.result;
         }
 
-        const destination =
-            validation.destination;
+        const {
+            destination,
+            helperId,
+        } = validation;
 
         metrics.lastDestination =
             destination.id;
+
+        metrics.lastHelperId =
+            helperId;
 
         metrics.lastAmount =
             amount;
 
         const timeoutMs =
-            Number.isSafeInteger(
+            normalizeTimeout(
                 request.timeoutMs
-            ) &&
-            request.timeoutMs > 0
-                ? request.timeoutMs
-                : DEFAULT_WAIT_TIMEOUT_MS;
+            );
 
         const alreadyCurrent =
             navigation.isCurrent(
@@ -942,7 +1526,11 @@
                 destination:
                     destination.id,
 
+                helperId,
+
                 amount,
+
+                timeoutMs,
 
                 notify:
                     request.notify !==
@@ -964,6 +1552,12 @@
                 {
                     destination:
                         destination.id,
+
+                    helperId,
+
+                    navigationStarted:
+                        navigationResult
+                            .navigationStarted,
                 }
             );
 
@@ -988,6 +1582,8 @@
                 destinationName:
                     destination.name,
 
+                helperId,
+
                 amount,
 
                 reason:
@@ -1001,8 +1597,9 @@
             });
         }
 
-        return fillAmount({
+        return prepareCurrentPage({
             destination,
+            helperId,
             amount,
             timeoutMs,
 
@@ -1025,14 +1622,52 @@
             return null;
         }
 
-        const destination =
-            getDestination(
-                pending.destination
+        const amount =
+            normalizeAmount(
+                pending.amount
             );
 
+        if (!amount) {
+            clearPendingPreparation();
+
+            metrics.validationFailures +=
+                1;
+
+            return createResult({
+                destination:
+                    pending.destination ||
+                    null,
+
+                amount:
+                    null,
+
+                reason:
+                    "invalid-pending-amount",
+
+                message:
+                    "The pending deposit amount is invalid and was cleared.",
+            });
+        }
+
+        const validation =
+            validateDestination(
+                pending.destination,
+                amount
+            );
+
+        if (!validation.valid) {
+            return validation.result;
+        }
+
+        const {
+            destination,
+        } = validation;
+
+        const helperId =
+            pending.helperId ||
+            validation.helperId;
+
         if (
-            !destination ||
-            !destination.routeId ||
             !navigation.isCurrent(
                 destination.routeId
             )
@@ -1043,16 +1678,34 @@
         metrics.navigationResumes +=
             1;
 
-        return fillAmount({
-            destination,
+        metrics.lastDestination =
+            destination.id;
 
-            amount:
-                normalizeAmount(
-                    pending.amount
-                ),
+        metrics.lastHelperId =
+            helperId;
+
+        metrics.lastAmount =
+            amount;
+
+        recordActivity(
+            "navigation-resume",
+            {
+                destination:
+                    destination.id,
+
+                helperId,
+            }
+        );
+
+        return prepareCurrentPage({
+            destination,
+            helperId,
+            amount,
 
             timeoutMs:
-                DEFAULT_WAIT_TIMEOUT_MS,
+                normalizeTimeout(
+                    pending.timeoutMs
+                ),
 
             highlightSubmitControl:
                 pending
@@ -1094,6 +1747,9 @@
     }
 
     function inspect() {
+        const pending =
+            getPendingPreparation();
+
         return {
             service:
                 "deposit",
@@ -1107,8 +1763,29 @@
 
             pending:
                 cloneValue(
-                    getPendingPreparation()
+                    pending
                 ),
+
+            helperIntegration: {
+                pageSubsystemAvailable:
+                    Boolean(
+                        dom.pages
+                    ),
+
+                registeredHelpers:
+                    dom.pages
+                        .listHelpers(),
+
+                factionBankAvailable:
+                    dom.pages
+                        .hasHelper(
+                            "faction-bank"
+                        ),
+
+                destinationMappings: {
+                    ...DEFAULT_HELPER_ID_BY_DESTINATION,
+                },
+            },
 
             capabilities: {
                 prepare:
@@ -1140,6 +1817,14 @@
                               metrics
                                   .lastResult
                           )
+                        : null,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
                         : null,
             },
         };
@@ -1185,6 +1870,9 @@
             navigationSupported:
                 true,
 
+            pageHelperIntegration:
+                true,
+
             preparationPublic:
                 true,
 
@@ -1201,13 +1889,18 @@
 
     /*
      * After a full-page navigation, the userscript starts again.
-     * Resume a pending preparation once the destination page has
-     * rendered.
+     * Resume the pending preparation only after all synchronous
+     * loader files have registered their services and helpers.
      */
     queueMicrotask(
         () => {
             resumePending().catch(
                 (error) => {
+                    metrics.lastError =
+                        createErrorSnapshot(
+                            error
+                        );
+
                     logger?.error(
                         "Pending deposit preparation could not resume",
                         {
@@ -1220,6 +1913,14 @@
     );
 
     logger?.info(
-        "Deposit service loaded"
+        "Deposit service loaded",
+        {
+            pageHelperIntegration:
+                true,
+
+            registeredHelpers:
+                dom.pages
+                    .listHelpers(),
+        }
     );
 })();
