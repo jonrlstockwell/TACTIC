@@ -8,26 +8,33 @@
  * services/dom/selectors.js
  *
  * Purpose:
- * Provides one centralized catalog for Torn DOM selectors used
- * by services, repositories, and applications.
+ * Registers TACTIC's shared Torn selector catalog with the
+ * centralized Selector Registry while preserving the original
+ * DOM selector API for backward compatibility.
  *
  * Responsibilities:
- * - Store shared Torn selectors
- * - Prevent selector duplication
- * - Provide stable selector names
- * - Allow selectors to be updated in one location
+ * - Define verified and shared Torn selectors
+ * - Register selector metadata with the Selector Registry
+ * - Preserve the nested dom.selectors catalog
+ * - Preserve dom.getSelector()
+ * - Prevent selector duplication across applications
+ * - Allow future fallback selectors and diagnostics
  *
  * Does NOT:
- * - Query the DOM
+ * - Query the DOM directly
  * - Observe elements
- * - Perform business logic
+ * - Navigate between pages
+ * - Perform application business logic
  *
  * Public API:
  * - TACTIC.services.dom.selectors
  * - TACTIC.services.dom.getSelector()
+ * - TACTIC.services.selectors
  *
  * Dependencies:
  * - services/dom/index.js
+ * - services/selectors/index.js
+ * - core/logger.js
  *
  * ============================================================
  */
@@ -46,11 +53,11 @@
         return;
     }
 
-    const dom =
-        TACTIC.services.dom;
-
-    const logger =
-        TACTIC.services.logger;
+    const {
+        dom,
+        selectors,
+        logger,
+    } = TACTIC.services;
 
     if (!dom) {
         console.error(
@@ -60,20 +67,37 @@
         return;
     }
 
-    function deepFreeze(value) {
+    if (!selectors) {
+        console.error(
+            "[TACTIC DOM Selectors] Selector Registry service is unavailable."
+        );
+
+        return;
+    }
+
+    function deepFreeze(
+        value
+    ) {
         if (
             value === null ||
-            typeof value !== "object" ||
-            Object.isFrozen(value)
+            typeof value !==
+                "object" ||
+            Object.isFrozen(
+                value
+            )
         ) {
             return value;
         }
 
-        Object.freeze(value);
+        Object.freeze(
+            value
+        );
 
         for (
             const nestedValue of
-            Object.values(value)
+            Object.values(
+                value
+            )
         ) {
             deepFreeze(
                 nestedValue
@@ -84,11 +108,13 @@
     }
 
     /*
-     * Only selectors that have been verified or are sufficiently
-     * generic should be placed here.
+     * This nested object preserves the original selector catalog
+     * shape used throughout TACTIC.
      *
-     * Torn-specific selectors can be corrected here without
-     * changing applications that consume them.
+     * Existing code can continue using:
+     *
+     * dom.selectors.USER.WALLET
+     * dom.getSelector("USER.WALLET")
      */
     const SELECTORS =
         deepFreeze({
@@ -134,7 +160,8 @@
             DIALOG: {
                 /*
                  * Generic Torn dialog containers. Applications
-                 * should verify button text before taking action.
+                 * must verify dialog content and button text before
+                 * taking any action.
                  */
                 VISIBLE_DIALOGS:
                     '[role="dialog"], .dialog, .confirm-wrap, .modal',
@@ -152,25 +179,603 @@
             },
         });
 
-    function getSelector(path) {
+    /*
+     * Rich selector definitions used by the new registry.
+     *
+     * Fallbacks can be added to any definition later without
+     * changing the consuming repository, service, or module.
+     */
+    const DEFINITIONS = [
+        {
+            key:
+                "DOCUMENT.BODY",
+
+            selector:
+                SELECTORS
+                    .DOCUMENT
+                    .BODY,
+
+            description:
+                "The current document body element.",
+
+            pageId:
+                "global",
+
+            required:
+                true,
+
+            verified:
+                true,
+
+            visible:
+                false,
+
+            metadata: {
+                category:
+                    "document",
+
+                generic:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "DOCUMENT.HEAD",
+
+            selector:
+                SELECTORS
+                    .DOCUMENT
+                    .HEAD,
+
+            description:
+                "The current document head element.",
+
+            pageId:
+                "global",
+
+            required:
+                true,
+
+            verified:
+                true,
+
+            visible:
+                false,
+
+            metadata: {
+                category:
+                    "document",
+
+                generic:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "DOCUMENT.TITLE",
+
+            selector:
+                SELECTORS
+                    .DOCUMENT
+                    .TITLE,
+
+            description:
+                "The current document title element.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                false,
+
+            metadata: {
+                category:
+                    "document",
+
+                generic:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "USER.WALLET",
+
+            selector:
+                SELECTORS
+                    .USER
+                    .WALLET,
+
+            description:
+                "The current player's displayed wallet balance.",
+
+            pageId:
+                "global",
+
+            required:
+                true,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "user",
+
+                repository:
+                    "user",
+
+                dataKey:
+                    "wallet",
+            },
+        },
+
+        {
+            key:
+                "FACTION.ARMOURY_DONATE_ROOT",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .ARMOURY_DONATE_ROOT,
+
+            description:
+                "The root container for the faction armoury donation page.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "page-root",
+            },
+        },
+
+        {
+            key:
+                "FACTION.CASH_SECTION",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .CASH_SECTION,
+
+            description:
+                "The faction armoury cash donation section.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "cash-section",
+            },
+        },
+
+        {
+            key:
+                "FACTION.CASH_FORM",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .CASH_FORM,
+
+            description:
+                "The faction armoury cash donation form.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "deposit-form",
+            },
+        },
+
+        {
+            key:
+                "FACTION.DEPOSIT_AMOUNT",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .DEPOSIT_AMOUNT,
+
+            description:
+                "The faction-bank cash deposit amount field.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "amount-input",
+
+                publicAction:
+                    "fill",
+            },
+        },
+
+        {
+            key:
+                "FACTION.DEPOSIT_BUTTON",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .DEPOSIT_BUTTON,
+
+            description:
+                "The faction-bank deposit submission button.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "submit-control",
+
+                publicAction:
+                    "highlight-only",
+
+                submissionRestricted:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "FACTION.PRESET_AMOUNT_BUTTONS",
+
+            selector:
+                SELECTORS
+                    .FACTION
+                    .PRESET_AMOUNT_BUTTONS,
+
+            description:
+                "Preset cash amount controls on the faction donation form.",
+
+            pageId:
+                "faction",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            multiple:
+                true,
+
+            metadata: {
+                category:
+                    "faction-bank",
+
+                destination:
+                    "faction-bank",
+
+                role:
+                    "preset-controls",
+            },
+        },
+
+        {
+            key:
+                "DIALOG.VISIBLE_DIALOGS",
+
+            selector:
+                SELECTORS
+                    .DIALOG
+                    .VISIBLE_DIALOGS,
+
+            description:
+                "Generic Torn dialog and modal containers.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            multiple:
+                true,
+
+            metadata: {
+                category:
+                    "dialog",
+
+                generic:
+                    true,
+
+                requiresContentVerification:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "DIALOG.BUTTONS",
+
+            selector:
+                SELECTORS
+                    .DIALOG
+                    .BUTTONS,
+
+            description:
+                "Generic buttons that may appear inside Torn dialogs.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            multiple:
+                true,
+
+            metadata: {
+                category:
+                    "dialog",
+
+                generic:
+                    true,
+
+                requiresTextVerification:
+                    true,
+            },
+        },
+
+        {
+            key:
+                "MARKET.LINKS",
+
+            selector:
+                SELECTORS
+                    .MARKET
+                    .LINKS,
+
+            description:
+                "Links pointing to Torn's item market.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                false,
+
+            multiple:
+                true,
+
+            metadata: {
+                category:
+                    "market",
+
+                generic:
+                    true,
+
+                role:
+                    "market-link",
+            },
+        },
+
+        {
+            key:
+                "MARKET.CATEGORY_LINKS",
+
+            selector:
+                SELECTORS
+                    .MARKET
+                    .CATEGORY_LINKS,
+
+            description:
+                "Links pointing to item-market categories.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                false,
+
+            multiple:
+                true,
+
+            metadata: {
+                category:
+                    "market",
+
+                generic:
+                    true,
+
+                role:
+                    "category-link",
+            },
+        },
+    ];
+
+    /*
+     * Register or replace every catalog entry.
+     *
+     * replace: true makes development reloads and future selector
+     * migrations deterministic without creating duplicate errors.
+     */
+    const registrationResults =
+        selectors.registerMany(
+            DEFINITIONS,
+            {
+                replace:
+                    true,
+            }
+        );
+
+    /*
+     * Backward-compatible selector lookup.
+     *
+     * This returns the primary selector string, matching the
+     * original API. Runtime resolution and fallback selection are
+     * handled by services.selectors.resolve() or find().
+     */
+    function getSelector(
+        path
+    ) {
         if (
-            typeof path !== "string" ||
+            typeof path !==
+                "string" ||
             !path.trim()
         ) {
             return null;
         }
 
-        const parts =
+        const key =
             path
                 .trim()
+                .toUpperCase();
+
+        const registered =
+            selectors.get(
+                key
+            );
+
+        if (
+            registered
+                ?.definition
+                ?.selector
+        ) {
+            return registered
+                .definition
+                .selector;
+        }
+
+        /*
+         * Nested-catalog fallback retained as an additional
+         * compatibility safeguard.
+         */
+        const parts =
+            key
                 .split(".")
-                .filter(Boolean);
+                .filter(
+                    Boolean
+                );
 
         let value =
             SELECTORS;
 
         for (
-            const part of parts
+            const part of
+            parts
         ) {
             if (
                 value === null ||
@@ -187,7 +792,9 @@
             }
 
             value =
-                value[part];
+                value[
+                    part
+                ];
         }
 
         return typeof value ===
@@ -203,6 +810,11 @@
         getSelector;
 
     logger?.info(
-        "DOM selector catalog loaded"
+        "DOM selector catalog registered",
+        {
+            selectorCount:
+                registrationResults
+                    .length,
+        }
     );
 })();
