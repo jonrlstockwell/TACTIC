@@ -841,25 +841,33 @@
         };
     }
 
-    const pages =
-        Object.freeze({
-            ids:
-                PAGE_IDS,
+    /*
+     * Do not freeze this top-level object.
+     *
+     * Individual helper files attach convenience properties such
+     * as dom.pages.factionBank after registering themselves.
+     *
+     * Page IDs, page definitions, and registered helper objects
+     * remain frozen independently.
+     */
+    const pages = {
+        ids:
+            PAGE_IDS,
 
-            definitions:
-                PAGE_DEFINITIONS,
+        definitions:
+            PAGE_DEFINITIONS,
 
-            getRoute,
-            detect,
+        getRoute,
+        detect,
 
-            registerHelper,
-            unregisterHelper,
-            hasHelper,
-            getHelper,
-            listHelpers,
+        registerHelper,
+        unregisterHelper,
+        hasHelper,
+        getHelper,
+        listHelpers,
 
-            inspect,
-        });
+        inspect,
+    };
 
     /*
      * New organized API.
