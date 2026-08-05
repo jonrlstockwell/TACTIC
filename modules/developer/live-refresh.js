@@ -13,14 +13,15 @@
  *
  * Responsibilities:
  * - Subscribe to User Repository wallet updates
- * - Refresh the dashboard when it is open and active
+ * - Refresh the dashboard when it is the active drawer module
  * - Debounce repeated refresh requests
- * - Avoid unnecessary rendering while the dashboard is hidden
+ * - Avoid refreshing unrelated drawer modules
+ * - Expose live-refresh diagnostics
  *
  * Does NOT:
  * - Render dashboard content
  * - Modify wallet data
- * - Perform deposits or other Protection actions
+ * - Perform deposits or Protection actions
  * - Refresh unrelated drawer pages
  *
  * Dependencies:
@@ -129,13 +130,22 @@
 
         lastRefreshAt:
             null,
+
+        lastSkipReason:
+            null,
     };
 
+    /*
+     * The active module ID is the reliable source of truth.
+     *
+     * drawer.isOpen() can temporarily report false after Torn
+     * restores the drawer during startup even though the active
+     * Developer page is visible.
+     */
     function isDashboardActive() {
         return (
-            drawer.isOpen() &&
             drawer.getActiveModuleId() ===
-                MODULE_ID
+            MODULE_ID
         );
     }
 
@@ -143,6 +153,9 @@
         if (!isDashboardActive()) {
             metrics.refreshesSkipped +=
                 1;
+
+            metrics.lastSkipReason =
+                "developer-dashboard-not-active";
 
             return false;
         }
@@ -154,6 +167,9 @@
 
         metrics.lastRefreshAt =
             Date.now();
+
+        metrics.lastSkipReason =
+            null;
 
         return true;
     }
@@ -235,6 +251,12 @@
             dashboardActive:
                 isDashboardActive(),
 
+            activeModuleId:
+                drawer.getActiveModuleId(),
+
+            drawerReportedOpen:
+                drawer.isOpen(),
+
             metrics: {
                 ...metrics,
             },
@@ -257,6 +279,9 @@
             INSTALLATION_KEY
         ];
 
+        delete TACTIC.services
+            .developerDashboardLiveRefresh;
+
         logger?.info(
             "Developer Dashboard live refresh stopped"
         );
@@ -266,8 +291,10 @@
 
     const liveRefresh = {
         inspect,
+
         refresh:
             scheduleRefresh,
+
         destroy,
     };
 
