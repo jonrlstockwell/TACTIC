@@ -18,7 +18,7 @@
 // ============================================================
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=1
@@ -49,20 +49,21 @@
 
 
 // ============================================================
-// SHARED DEPOSIT SERVICE
-// ============================================================
-
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=1
-
-
-// ============================================================
-// APPLICATION SERVICES
+// GENERAL APPLICATION SERVICES
+// Notifications must load before Deposit.
 // ============================================================
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/settings/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/notifications/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/transactions/index.js?v=1
+
+
+// ============================================================
+// SHARED DEPOSIT SERVICE
+// ============================================================
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=1
 
 
 // ============================================================
@@ -81,7 +82,7 @@
 
 // ============================================================
 // USER INTERFACE
-// These must load before any registered modules.
+// Must load before registered modules and Bootstrap.
 // ============================================================
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=2
@@ -90,8 +91,7 @@
 
 // ============================================================
 // PROTECTION APPLICATION
-// Temporary bridge files remain until Protection directly uses
-// TACTIC.services.deposit.
+// Compatibility bridges remain temporarily.
 // ============================================================
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/settings.js?v=2
@@ -103,7 +103,7 @@
 
 // ============================================================
 // DEVELOPER BUILD ONLY
-// These will not be included in the eventual public loader.
+// Exclude these from the eventual public loader.
 // ============================================================
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/index.js?v=3
