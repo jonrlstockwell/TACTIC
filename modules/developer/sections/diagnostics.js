@@ -1,9 +1,11 @@
 (() => {
     "use strict";
 
+    const TACTIC =
+        globalThis.TACTIC;
+
     const dashboard =
-        globalThis.TACTIC
-            ?.developerDashboard;
+        TACTIC?.developerDashboard;
 
     if (!dashboard) {
         return;
@@ -12,10 +14,10 @@
     dashboard.registerSection(
         {
             id:
-                "modules",
+                "diagnostics",
 
             order:
-                600,
+                900,
 
             render({
                 container,
@@ -24,80 +26,85 @@
             }) {
                 const section =
                     tools.createSection(
-                        "Modules"
+                        "Diagnostics"
                     );
 
-                const healthById =
-                    new Map(
-                        (
-                            data.health
-                                .grouped
-                                ?.modules ||
-                            []
-                        ).map(
-                            (record) => [
-                                record.name.replace(
-                                    /^module:/,
-                                    ""
-                                ),
-
-                                record,
-                            ]
-                        )
+                const page =
+                    tools.safelyRead(
+                        () =>
+                            TACTIC.services
+                                .dom
+                                .getPage(),
+                        null
                     );
 
-                for (
-                    const module of
-                    [
-                        ...data.modules,
-                    ].sort(
-                        (
-                            first,
-                            second
-                        ) =>
-                            (
-                                first.order ||
-                                0
-                            ) -
-                            (
-                                second.order ||
+                section.content.append(
+                    tools.createStatGrid([
+                        tools.createCard(
+                            "Current Page",
+                            page
+                                ? `${page.name} (${page.id})`
+                                : "Unknown"
+                        ),
+
+                        tools.createCard(
+                            "Current Route",
+                            data.navigation
+                                .currentHref ||
+                            globalThis.location
+                                .href
+                        ),
+
+                        tools.createCard(
+                            "Logger Level",
+                            data.logger
+                                .level ||
+                            "unknown"
+                        ),
+
+                        tools.createCard(
+                            "DOM Activity",
+                            data.dom
+                                .metrics
+                                ?.lastOperation ||
+                            "None"
+                        ),
+
+                        tools.createCard(
+                            "Selector Count",
+                            String(
+                                data.selectors
+                                    .selectorCount ||
                                 0
                             )
-                    )
-                ) {
-                    const health =
-                        healthById.get(
-                            module.id
-                        );
+                        ),
 
-                    const status =
-                        health?.status ||
-                        (
-                            module.error
-                                ? "failed"
-                                : module.initialized
-                                  ? "healthy"
-                                  : "starting"
-                        );
+                        tools.createCard(
+                            "Fallbacks in Use",
+                            String(
+                                data.selectors
+                                    .fallbackInUseCount ||
+                                0
+                            )
+                        ),
 
-                    section.content.appendChild(
-                        tools.createStatusRow({
-                            icon:
-                                module.icon ||
-                                tools.getHealthIcon(
-                                    status
-                                ),
+                        tools.createCard(
+                            "Dashboard Sections",
+                            String(
+                                dashboard
+                                    .getSections()
+                                    .length
+                            )
+                        ),
 
-                            name:
-                                module.name,
-
-                            status,
-
-                            detail:
-                                `${module.id} · v${module.version}`,
-                        })
-                    );
-                }
+                        tools.createCard(
+                            "Last Refreshed",
+                            tools.formatTimestamp(
+                                data.timestamp
+                            )
+                        ),
+                    ])
+                );
 
                 container.appendChild(
                     section.section
