@@ -28,6 +28,7 @@
 // Runtime services
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/scheduler/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/capabilities/index.js?v=1
 
 // DOM
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=3
