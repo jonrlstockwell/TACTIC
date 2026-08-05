@@ -12,13 +12,15 @@
  *
  * Responsibilities:
  * - Create the Protection settings namespace
- * - Define validated defaults
+ * - Define validated wallet-protection defaults
+ * - Define the selected deposit destination
  * - Expose the settings API to Protection files
  *
  * Does NOT:
  * - Evaluate wallet balances
- * - Execute deposits
- * - Render the Protection page
+ * - Navigate to deposit pages
+ * - Fill or submit deposit forms
+ * - Render the Protection interface
  *
  * Public API:
  * - TACTIC.protection.settings
@@ -59,6 +61,18 @@
         TACTIC.protection = {};
     }
 
+    const DESTINATIONS =
+        Object.freeze({
+            FACTION_BANK:
+                "faction-bank",
+
+            PERSONAL_VAULT:
+                "personal-vault",
+
+            BANK:
+                "bank",
+        });
+
     const settings =
         settingsService.namespace(
             "protection",
@@ -67,10 +81,10 @@
                     "Wallet Protection",
 
                 description:
-                    "Protects wallet cash by depositing excess funds into the faction bank.",
+                    "Protects wallet cash by preparing deposits to a selected destination.",
 
                 version:
-                    "1.0.0",
+                    "1.1.0",
 
                 category:
                     "Protection",
@@ -89,10 +103,38 @@
                 "Enable Protection",
 
             description:
-                "Allows Protection to react when the wallet exceeds the configured threshold.",
+                "Allows Protection to recommend and prepare deposits when the wallet exceeds the configured threshold.",
 
             category:
                 "General",
+        },
+
+        depositDestination: {
+            type:
+                "string",
+
+            default:
+                DESTINATIONS
+                    .FACTION_BANK,
+
+            allowed: [
+                DESTINATIONS
+                    .FACTION_BANK,
+
+                DESTINATIONS
+                    .PERSONAL_VAULT,
+
+                DESTINATIONS.BANK,
+            ],
+
+            label:
+                "Deposit Destination",
+
+            description:
+                "Selects where Protection should prepare the recommended deposit.",
+
+            category:
+                "Destination",
         },
 
         threshold: {
@@ -115,7 +157,7 @@
                 "Activation Threshold",
 
             description:
-                "Protection evaluates a deposit only when the wallet is greater than this amount.",
+                "Protection recommends a deposit only when the wallet exceeds this amount.",
 
             category:
                 "Wallet",
@@ -141,7 +183,7 @@
                 "Keep in Wallet",
 
             description:
-                "The amount Protection attempts to leave in the wallet after a deposit.",
+                "The amount Protection attempts to leave in the wallet.",
 
             category:
                 "Wallet",
@@ -164,10 +206,10 @@
                 true,
 
             label:
-                "Maximum Transaction",
+                "Maximum Prepared Amount",
 
             description:
-                "The maximum amount allowed in a single automatic faction-bank transaction.",
+                "The maximum amount Protection will place into a deposit field at one time.",
 
             category:
                 "Safety",
@@ -193,7 +235,7 @@
                 "Duplicate Cooldown",
 
             description:
-                "Blocks repeated attempts for the same deposit amount during this period.",
+                "Prevents Protection from repeatedly preparing the same deposit during this period.",
 
             category:
                 "Safety",
@@ -216,7 +258,7 @@
                 "Notifications",
         },
 
-        notifyOnComplete: {
+        notifyOnPrepared: {
             type:
                 "boolean",
 
@@ -224,15 +266,18 @@
                 true,
 
             label:
-                "Completion Notifications",
+                "Prepared Notifications",
 
             description:
-                "Shows a notification after a deposit is confirmed by a wallet decrease.",
+                "Shows a notification after Protection fills a deposit amount.",
 
             category:
                 "Notifications",
         },
     });
+
+    TACTIC.protection.destinations =
+        DESTINATIONS;
 
     TACTIC.protection.settings =
         settings;
