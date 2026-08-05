@@ -33,7 +33,7 @@
 // ============================================================
 // RUNTIME FOUNDATION
 // ============================================================
-
+//
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/scheduler/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/capabilities/index.js?v=2
@@ -43,7 +43,7 @@
 // ============================================================
 // DOM AND SELECTOR SERVICES
 // ============================================================
-
+//
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=2
@@ -70,15 +70,15 @@
 // ============================================================
 // SHARED DEPOSIT SERVICE
 // ============================================================
-
+//
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=2
-
-
+//
+//
 // ============================================================
 // ACTION SERVICE
 // ============================================================
-
+//
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=1
 //
