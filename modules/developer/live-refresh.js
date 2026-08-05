@@ -19,7 +19,7 @@
  * - Expose live-refresh diagnostics
  *
  * Does NOT:
- * - Render dashboard content
+ * - Render dashboard content directly
  * - Modify wallet data
  * - Perform deposits or Protection actions
  * - Refresh unrelated drawer pages
@@ -56,6 +56,7 @@
         drawer,
         scheduler,
         logger,
+        errors,
     } = services;
 
     const userRepository =
@@ -122,6 +123,9 @@
         refreshesSkipped:
             0,
 
+        refreshErrors:
+            0,
+
         lastWalletValue:
             null,
 
@@ -133,14 +137,14 @@
 
         lastSkipReason:
             null,
+
+        lastError:
+            null,
     };
 
     /*
-     * The active module ID is the reliable source of truth.
-     *
-     * drawer.isOpen() can temporarily report false after Torn
-     * restores the drawer during startup even though the active
-     * Developer page is visible.
+     * The active module ID is more reliable than drawer.isOpen()
+     * after Torn restores the drawer during page startup.
      */
     function isDashboardActive() {
         return (
@@ -149,7 +153,7 @@
         );
     }
 
-    function refreshDashboard() {
+    async function refreshDashboard() {
         if (!isDashboardActive()) {
             metrics.refreshesSkipped +=
                 1;
@@ -160,18 +164,89 @@
             return false;
         }
 
-        drawer.refresh();
+        try {
+            /*
+             * Do not use drawer.refresh() here.
+             *
+             * The restored drawer can visibly remain open while
+             * drawer.isOpen() reports false. refresh() may respect
+             * that incorrect flag and skip rendering.
+             *
+             * renderActiveModule() directly rebuilds the currently
+             * selected module and does not depend on that flag.
+             */
+            await drawer.renderActiveModule();
 
-        metrics.refreshesCompleted +=
-            1;
+            metrics.refreshesCompleted +=
+                1;
 
-        metrics.lastRefreshAt =
-            Date.now();
+            metrics.lastRefreshAt =
+                Date.now();
 
-        metrics.lastSkipReason =
-            null;
+            metrics.lastSkipReason =
+                null;
 
-        return true;
+            metrics.lastError =
+                null;
+
+            return true;
+        } catch (error) {
+            metrics.refreshErrors +=
+                1;
+
+            metrics.lastError = {
+                name:
+                    error?.name ||
+                    "Error",
+
+                message:
+                    error?.message ||
+                    String(error),
+
+                timestamp:
+                    Date.now(),
+            };
+
+            errors?.report({
+                code:
+                    TACTIC.ERROR_CODES
+                        ?.GENERAL
+                        ?.INTERNAL ||
+                    "INTERNAL",
+
+                severity:
+                    TACTIC.SEVERITY
+                        ?.ERROR ||
+                    "error",
+
+                service:
+                    "developer-dashboard-live-refresh",
+
+                message:
+                    "Developer Dashboard live refresh failed.",
+
+                details: {
+                    activeModuleId:
+                        drawer.getActiveModuleId(),
+
+                    drawerReportedOpen:
+                        drawer.isOpen(),
+                },
+
+                error,
+
+                recoverable:
+                    true,
+
+                retryable:
+                    true,
+
+                recovery:
+                    "Reopen the Developer Dashboard or manually refresh it.",
+            });
+
+            return false;
+        }
     }
 
     function scheduleRefresh() {
@@ -182,7 +257,9 @@
             scheduler.once(
                 REFRESH_TIMER_NAME,
                 REFRESH_DELAY_MS,
-                refreshDashboard,
+                async () => {
+                    await refreshDashboard();
+                },
                 {
                     group:
                         REFRESH_TIMER_GROUP,
@@ -207,7 +284,9 @@
         }
 
         setTimeout(
-            refreshDashboard,
+            () => {
+                refreshDashboard();
+            },
             REFRESH_DELAY_MS
         );
 
@@ -259,6 +338,13 @@
 
             metrics: {
                 ...metrics,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics.lastError,
+                          }
+                        : null,
             },
         };
     }
@@ -294,6 +380,9 @@
 
         refresh:
             scheduleRefresh,
+
+        refreshNow:
+            refreshDashboard,
 
         destroy,
     };
