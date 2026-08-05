@@ -110,10 +110,8 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/settings.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/destinations.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/rules.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/assistant.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=2
 //
 //
 // ============================================================
