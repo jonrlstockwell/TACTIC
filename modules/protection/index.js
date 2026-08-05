@@ -8,26 +8,43 @@
  * modules/protection/index.js
  *
  * Purpose:
- * Provides the Wallet Protection drawer application and connects
- * the User Repository, Protection rules, and persistent settings.
+ * Provides the Wallet Protection application interface and
+ * connects wallet data, Protection rules, settings, and shared
+ * framework actions.
  *
  * Responsibilities:
- * - Register the Protection application
+ * - Register the Protection drawer module
  * - Subscribe to live wallet updates
- * - Evaluate the current wallet
- * - Display Protection status and configuration
- * - Allow safe settings changes
- * - Refresh the page when relevant data changes
+ * - Evaluate the current wallet against Protection rules
+ * - Display recommended deposit plans
+ * - Allow the player to select a deposit destination
+ * - Request the public deposit.prepare action
+ * - Refresh when wallet or settings data changes
+ * - Leave deposit submission entirely to the player
  *
  * Does NOT:
- * - Navigate to the faction bank
- * - Fill deposit fields
- * - Click deposit or confirmation buttons
- * - Execute automatic transactions
+ * - Know Torn URLs
+ * - Know deposit selectors
+ * - Directly manipulate deposit forms
+ * - Submit deposits
+ * - Confirm deposits
+ * - Perform developer-only automatic transactions
  *
  * Public API:
  * - Registered module: protection
  * - TACTIC.protection.inspect()
+ * - TACTIC.protection.prepareDeposit()
+ *
+ * Dependencies:
+ * - modules/protection/settings.js
+ * - modules/protection/rules.js
+ * - repositories/user/index.js
+ * - services/actions/index.js
+ * - services/actions/deposit.js
+ * - services/deposit/index.js
+ * - services/settings/index.js
+ * - services/notifications/index.js
+ * - ui/drawer/index.js
  *
  * ============================================================
  */
@@ -46,19 +63,33 @@
         return;
     }
 
+    if (
+        !TACTIC.protection ||
+        typeof TACTIC.protection !==
+            "object"
+    ) {
+        TACTIC.protection = {};
+    }
+
     const MODULE_ID =
         "protection";
 
+    const ACTION_ID =
+        "deposit.prepare";
+
     const settings =
-        TACTIC.protection?.settings;
+        TACTIC.protection.settings;
 
     const rules =
-        TACTIC.protection?.rules;
+        TACTIC.protection.rules;
 
     const userRepository =
         TACTIC.repositories?.user;
 
     const {
+        actions,
+        capabilities,
+        deposit,
         drawer,
         logger,
         events,
@@ -66,13 +97,45 @@
         health,
     } = TACTIC.services;
 
+    if (!settings) {
+        console.error(
+            "[TACTIC Protection] Protection settings are unavailable."
+        );
+
+        return;
+    }
+
+    if (!rules) {
+        console.error(
+            "[TACTIC Protection] Protection rules are unavailable."
+        );
+
+        return;
+    }
+
+    if (!userRepository) {
+        console.error(
+            "[TACTIC Protection] User Repository is unavailable."
+        );
+
+        return;
+    }
+
+    if (!actions) {
+        console.error(
+            "[TACTIC Protection] Action service is unavailable."
+        );
+
+        return;
+    }
+
     if (
-        !settings ||
-        !rules ||
-        !userRepository
+        !actions.has(
+            ACTION_ID
+        )
     ) {
         console.error(
-            "[TACTIC Protection] Required dependencies are unavailable."
+            `[TACTIC Protection] Required action "${ACTION_ID}" is not registered.`
         );
 
         return;
@@ -89,6 +152,12 @@
 
     let latestEvaluation =
         null;
+
+    let latestActionResult =
+        null;
+
+    let preparationInProgress =
+        false;
 
     const metrics = {
         loadedAt:
@@ -112,12 +181,77 @@
         refreshRequests:
             0,
 
+        refreshesCompleted:
+            0,
+
+        preparationRequests:
+            0,
+
+        preparationsCompleted:
+            0,
+
+        preparationsFailed:
+            0,
+
         lastWalletUpdateAt:
             null,
 
         lastEvaluationAt:
             null,
+
+        lastPreparationAt:
+            null,
+
+        lastActionState:
+            null,
+
+        lastActionReason:
+            null,
+
+        lastError:
+            null,
     };
+
+    function cloneValue(
+        value
+    ) {
+        if (
+            value === null ||
+            value === undefined
+        ) {
+            return value;
+        }
+
+        if (
+            typeof structuredClone ===
+            "function"
+        ) {
+            try {
+                return structuredClone(
+                    value
+                );
+            } catch {
+                // Fall through.
+            }
+        }
+
+        if (
+            typeof value ===
+                "object"
+        ) {
+            try {
+                return JSON.parse(
+                    JSON.stringify(
+                        value
+                    )
+                );
+            } catch {
+                return value;
+            }
+        }
+
+        return value;
+    }
 
     function formatMoney(
         value
@@ -147,11 +281,39 @@
         );
     }
 
+    function formatReason(
+        reason
+    ) {
+        if (
+            typeof reason !==
+                "string" ||
+            !reason
+        ) {
+            return "Unknown";
+        }
+
+        return reason
+            .split("-")
+            .map(
+                (word) =>
+                    word
+                        .charAt(0)
+                        .toUpperCase() +
+                    word.slice(1)
+            )
+            .join(" ");
+    }
+
     function getConfiguration() {
         return {
             enabled:
                 settings.get(
                     "enabled"
+                ),
+
+            destination:
+                settings.get(
+                    "depositDestination"
                 ),
 
             threshold:
@@ -179,9 +341,9 @@
                     "notifyOnTrigger"
                 ),
 
-            notifyOnComplete:
+            notifyOnPrepared:
                 settings.get(
-                    "notifyOnComplete"
+                    "notifyOnPrepared"
                 ),
         };
     }
@@ -202,9 +364,28 @@
         return latestEvaluation;
     }
 
+    function getDestination(
+        destinationId
+    ) {
+        return (
+            deposit?.getDestination(
+                destinationId
+            ) ||
+            null
+        );
+    }
+
+    function getDestinations() {
+        return (
+            deposit?.listDestinations() ||
+            []
+        );
+    }
+
     function isProtectionPageActive() {
         return (
-            drawer?.getActiveModuleId() ===
+            drawer
+                ?.getActiveModuleId?.() ===
             MODULE_ID
         );
     }
@@ -220,7 +401,10 @@
         }
 
         await drawer
-            ?.renderActiveModule();
+            .renderActiveModule();
+
+        metrics.refreshesCompleted +=
+            1;
 
         return true;
     }
@@ -234,9 +418,14 @@
                 tagName
             );
 
-        if (options.text !== undefined) {
+        if (
+            options.text !==
+            undefined
+        ) {
             element.textContent =
-                String(options.text);
+                String(
+                    options.text
+                );
         }
 
         if (options.className) {
@@ -272,13 +461,17 @@
 
     function createCard(
         label,
-        value
+        value,
+        options = {}
     ) {
         const card =
             createElement(
                 "div",
                 {
                     styles: {
+                        boxSizing:
+                            "border-box",
+
                         padding:
                             "11px 12px",
 
@@ -314,6 +507,9 @@
                         fontWeight:
                             "700",
 
+                        letterSpacing:
+                            ".03em",
+
                         textTransform:
                             "uppercase",
                     },
@@ -329,13 +525,23 @@
 
                     styles: {
                         color:
+                            options.color ||
                             "#f2f2f2",
 
                         fontSize:
-                            "16px",
+                            options.large ===
+                            false
+                                ? "13px"
+                                : "16px",
 
                         fontWeight:
-                            "700",
+                            options.large ===
+                            false
+                                ? "600"
+                                : "700",
+
+                        overflowWrap:
+                            "anywhere",
                     },
                 }
             );
@@ -365,6 +571,9 @@
                     },
 
                     styles: {
+                        boxSizing:
+                            "border-box",
+
                         width:
                             "100%",
 
@@ -386,28 +595,71 @@
                             "#fff",
 
                         cursor:
-                            "pointer",
+                            options.disabled
+                                ? "not-allowed"
+                                : "pointer",
 
                         fontSize:
                             "13px",
 
                         fontWeight:
                             "700",
+
+                        opacity:
+                            options.disabled
+                                ? ".55"
+                                : "1",
                     },
                 }
             );
 
-        button.addEventListener(
-            "click",
-            onClick
-        );
+        button.disabled =
+            options.disabled ===
+            true;
+
+        if (
+            !button.disabled &&
+            typeof onClick ===
+                "function"
+        ) {
+            button.addEventListener(
+                "click",
+                onClick
+            );
+        }
 
         return button;
     }
 
+    function createSectionHeading(
+        text
+    ) {
+        return createElement(
+            "h3",
+            {
+                text,
+
+                styles: {
+                    margin:
+                        "0",
+
+                    color:
+                        "#eee",
+
+                    fontSize:
+                        "14px",
+
+                    fontWeight:
+                        "700",
+                },
+            }
+        );
+    }
+
     function createNumberSetting(
         label,
-        key
+        key,
+        options = {}
     ) {
         const wrapper =
             createElement(
@@ -452,7 +704,16 @@
                             "number",
 
                         min:
-                            "0",
+                            String(
+                                options.minimum ??
+                                0
+                            ),
+
+                        max:
+                            String(
+                                options.maximum ??
+                                100000000000
+                            ),
 
                         step:
                             "1",
@@ -506,7 +767,7 @@
                         }
                     );
                 } catch (error) {
-                    notifications?.warning(
+                    notifications?.warning?.(
                         error.message,
                         {
                             title:
@@ -535,6 +796,493 @@
         return wrapper;
     }
 
+    function createDestinationSetting() {
+        const wrapper =
+            createElement(
+                "label",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "5px",
+                    },
+                }
+            );
+
+        const label =
+            createElement(
+                "span",
+                {
+                    text:
+                        "Deposit Destination",
+
+                    styles: {
+                        color:
+                            "#bbb",
+
+                        fontSize:
+                            "12px",
+
+                        fontWeight:
+                            "600",
+                    },
+                }
+            );
+
+        const select =
+            createElement(
+                "select",
+                {
+                    styles: {
+                        boxSizing:
+                            "border-box",
+
+                        width:
+                            "100%",
+
+                        padding:
+                            "9px 10px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.16)",
+
+                        borderRadius:
+                            "5px",
+
+                        background:
+                            "#202020",
+
+                        color:
+                            "#fff",
+                    },
+                }
+            );
+
+        const selectedDestination =
+            settings.get(
+                "depositDestination"
+            );
+
+        for (
+            const destination of
+            getDestinations()
+        ) {
+            const option =
+                createElement(
+                    "option",
+                    {
+                        text:
+                            destination.verified &&
+                            destination.fillSupported
+                                ? destination.name
+                                : `${destination.name} — Not Yet Mapped`,
+
+                        attributes: {
+                            value:
+                                destination.id,
+                        },
+                    }
+                );
+
+            option.selected =
+                destination.id ===
+                selectedDestination;
+
+            select.appendChild(
+                option
+            );
+        }
+
+        select.addEventListener(
+            "change",
+            () => {
+                try {
+                    settings.set(
+                        "depositDestination",
+                        select.value,
+                        {
+                            source:
+                                "protection-ui",
+                        }
+                    );
+                } catch (error) {
+                    notifications?.warning?.(
+                        error.message,
+                        {
+                            title:
+                                "Invalid Deposit Destination",
+
+                            group:
+                                "protection",
+                        }
+                    );
+
+                    select.value =
+                        settings.get(
+                            "depositDestination"
+                        );
+                }
+            }
+        );
+
+        wrapper.append(
+            label,
+            select
+        );
+
+        return wrapper;
+    }
+
+    function getStatusDisplay(
+        evaluation
+    ) {
+        if (
+            preparationInProgress
+        ) {
+            return {
+                text:
+                    "Preparing deposit",
+
+                background:
+                    "rgba(75,145,230,.16)",
+            };
+        }
+
+        if (
+            evaluation.shouldDeposit
+        ) {
+            return {
+                text:
+                    "Deposit recommended",
+
+                background:
+                    "rgba(245,166,35,.14)",
+            };
+        }
+
+        if (
+            evaluation.reason ===
+            "protection-disabled"
+        ) {
+            return {
+                text:
+                    "Protection disabled",
+
+                background:
+                    "rgba(255,255,255,.055)",
+            };
+        }
+
+        return {
+            text:
+                formatReason(
+                    evaluation.reason
+                ),
+
+            background:
+                "rgba(67,160,71,.13)",
+        };
+    }
+
+    async function prepareDeposit() {
+        const evaluation =
+            evaluate();
+
+        if (
+            preparationInProgress
+        ) {
+            return {
+                state:
+                    "duplicate",
+
+                reason:
+                    "preparation-already-running",
+            };
+        }
+
+        if (
+            !evaluation.shouldDeposit
+        ) {
+            notifications?.warning?.(
+                "There is currently no recommended deposit to prepare.",
+                {
+                    title:
+                        "Protection",
+
+                    group:
+                        "protection",
+                }
+            );
+
+            return {
+                state:
+                    "not-required",
+
+                evaluation:
+                    cloneValue(
+                        evaluation
+                    ),
+            };
+        }
+
+        const destination =
+            getDestination(
+                evaluation.destination
+            );
+
+        if (
+            !destination ||
+            !destination.verified ||
+            !destination.fillSupported
+        ) {
+            notifications?.warning?.(
+                destination
+                    ? `${destination.name} has not been mapped for deposit preparation yet.`
+                    : "The selected deposit destination is unavailable.",
+                {
+                    title:
+                        "Destination Unavailable",
+
+                    group:
+                        "protection",
+                }
+            );
+
+            return {
+                state:
+                    "destination-unavailable",
+
+                destination:
+                    evaluation.destination,
+            };
+        }
+
+        if (
+            !capabilities?.can(
+                "deposit.prepare"
+            )
+        ) {
+            notifications?.warning?.(
+                "Deposit preparation is not authorized in this build.",
+                {
+                    title:
+                        "Capability Unavailable",
+
+                    group:
+                        "protection",
+                }
+            );
+
+            return {
+                state:
+                    "capability-denied",
+            };
+        }
+
+        preparationInProgress =
+            true;
+
+        metrics.preparationRequests +=
+            1;
+
+        metrics.lastPreparationAt =
+            Date.now();
+
+        metrics.lastError =
+            null;
+
+        await refreshIfActive();
+
+        try {
+            const actionResult =
+                await actions.execute(
+                    ACTION_ID,
+                    {
+                        destination:
+                            evaluation.destination,
+
+                        amount:
+                            evaluation.depositAmount,
+
+                        notify:
+                            getConfiguration()
+                                .notifyOnPrepared,
+
+                        highlightSubmit:
+                            true,
+                    },
+                    {
+                        source:
+                            "protection",
+
+                        duplicateKey:
+                            `protection:${evaluation.destination}`,
+
+                        metadata: {
+                            module:
+                                MODULE_ID,
+
+                            wallet:
+                                evaluation
+                                    .wallet
+                                    .value,
+
+                            reserve:
+                                evaluation
+                                    .configuration
+                                    .reserve,
+
+                            threshold:
+                                evaluation
+                                    .configuration
+                                    .threshold,
+                        },
+                    }
+                );
+
+            latestActionResult =
+                actionResult;
+
+            metrics.lastActionState =
+                actionResult.state;
+
+            metrics.lastActionReason =
+                actionResult.result
+                    ?.reason ||
+                actionResult.error
+                    ?.message ||
+                null;
+
+            if (
+                actionResult.state ===
+                actions.states.COMPLETED
+            ) {
+                metrics.preparationsCompleted +=
+                    1;
+
+                const result =
+                    actionResult.result;
+
+                if (
+                    result?.navigationStarted
+                ) {
+                    notifications?.info?.(
+                        `${destination.name} is opening. The recommended amount will be filled after the page loads.`,
+                        {
+                            title:
+                                "Preparing Deposit",
+
+                            group:
+                                "protection",
+                        }
+                    );
+                } else if (
+                    result?.success ===
+                    false
+                ) {
+                    notifications?.warning?.(
+                        result.message ||
+                        "The deposit could not be prepared.",
+                        {
+                            title:
+                                "Deposit Not Prepared",
+
+                            group:
+                                "protection",
+                        }
+                    );
+                }
+            } else if (
+                actionResult.state ===
+                actions.states.DUPLICATE
+            ) {
+                notifications?.info?.(
+                    "A deposit preparation is already in progress.",
+                    {
+                        title:
+                            "Protection",
+
+                        group:
+                            "protection",
+                    }
+                );
+            } else {
+                metrics.preparationsFailed +=
+                    1;
+
+                notifications?.warning?.(
+                    actionResult.error
+                        ?.message ||
+                    "The deposit preparation action did not complete.",
+                    {
+                        title:
+                            "Protection Error",
+
+                        group:
+                            "protection",
+                    }
+                );
+            }
+
+            return actionResult;
+        } catch (error) {
+            metrics.preparationsFailed +=
+                1;
+
+            metrics.lastError = {
+                name:
+                    error?.name ||
+                    "Error",
+
+                message:
+                    error?.message ||
+                    String(error),
+
+                timestamp:
+                    Date.now(),
+            };
+
+            logger?.error(
+                "Protection deposit preparation failed",
+                {
+                    error,
+
+                    evaluation:
+                        cloneValue(
+                            evaluation
+                        ),
+                }
+            );
+
+            notifications?.warning?.(
+                error?.message ||
+                "Protection could not prepare the deposit.",
+                {
+                    title:
+                        "Protection Error",
+
+                    group:
+                        "protection",
+                }
+            );
+
+            return {
+                state:
+                    "failed",
+
+                error:
+                    metrics.lastError,
+            };
+        } finally {
+            preparationInProgress =
+                false;
+
+            await refreshIfActive();
+        }
+    }
+
     function render(
         container
     ) {
@@ -543,6 +1291,37 @@
 
         const evaluation =
             evaluate();
+
+        const configuration =
+            getConfiguration();
+
+        const destination =
+            getDestination(
+                evaluation.destination
+            );
+
+        const statusDisplay =
+            getStatusDisplay(
+                evaluation
+            );
+
+        const destinationSupported =
+            Boolean(
+                destination &&
+                destination.verified &&
+                destination.fillSupported
+            );
+
+        const preparationAuthorized =
+            capabilities?.can(
+                "deposit.prepare"
+            ) === true;
+
+        const prepareDisabled =
+            preparationInProgress ||
+            !evaluation.shouldDeposit ||
+            !destinationSupported ||
+            !preparationAuthorized;
 
         container.replaceChildren();
 
@@ -555,6 +1334,11 @@
 
                     className:
                         "tactic-page-heading",
+
+                    styles: {
+                        margin:
+                            "0",
+                    },
                 }
             );
 
@@ -563,9 +1347,12 @@
                 "p",
                 {
                     text:
-                        "Monitors your wallet and calculates how much should be protected. Automatic transactions remain disabled during this build phase.",
+                        "Monitors your wallet, calculates a recommended deposit, opens the selected destination, and fills the amount. You remain responsible for reviewing and submitting the deposit.",
 
                     styles: {
+                        margin:
+                            "8px 0 12px",
+
                         color:
                             "#aaa",
 
@@ -583,12 +1370,7 @@
                 "div",
                 {
                     text:
-                        evaluation.shouldDeposit
-                            ? "Deposit recommended"
-                            : evaluation.reason.replaceAll(
-                                  "-",
-                                  " "
-                              ),
+                        statusDisplay.text,
 
                     styles: {
                         margin:
@@ -597,26 +1379,21 @@
                         padding:
                             "10px 12px",
 
+                        border:
+                            "1px solid rgba(255,255,255,.08)",
+
                         borderRadius:
                             "6px",
 
                         background:
-                            evaluation.shouldDeposit
-                                ? "rgba(245,166,35,.13)"
-                                : settings.get(
-                                      "enabled"
-                                  )
-                                  ? "rgba(67,160,71,.13)"
-                                  : "rgba(255,255,255,.05)",
+                            statusDisplay
+                                .background,
 
                         color:
                             "#eee",
 
                         fontWeight:
                             "700",
-
-                        textTransform:
-                            "capitalize",
                     },
                 }
             );
@@ -662,7 +1439,7 @@
             ),
 
             createCard(
-                "Next Deposit",
+                "Recommended Deposit",
                 formatMoney(
                     evaluation
                         .depositAmount
@@ -678,7 +1455,35 @@
             ),
 
             createCard(
-                "Transaction Cap",
+                "Destination",
+                destination
+                    ?.name ||
+                    evaluation
+                        .destination,
+                {
+                    large:
+                        false,
+                }
+            ),
+
+            createCard(
+                "Destination Status",
+                destinationSupported
+                    ? "Ready"
+                    : "Not Yet Mapped",
+                {
+                    large:
+                        false,
+
+                    color:
+                        destinationSupported
+                            ? "#a5d6a7"
+                            : "#ffcc80",
+                }
+            ),
+
+            createCard(
+                "Maximum Prepared",
                 formatMoney(
                     evaluation
                         .configuration
@@ -688,9 +1493,7 @@
 
             createCard(
                 "Protection",
-                evaluation
-                    .configuration
-                    .enabled
+                configuration.enabled
                     ? "Enabled"
                     : "Disabled"
             )
@@ -715,9 +1518,21 @@
 
         controls.append(
             createButton(
-                settings.get(
-                    "enabled"
-                )
+                preparationInProgress
+                    ? "Preparing Deposit…"
+                    : "Prepare Recommended Deposit",
+                prepareDeposit,
+                {
+                    primary:
+                        true,
+
+                    disabled:
+                        prepareDisabled,
+                }
+            ),
+
+            createButton(
+                configuration.enabled
                     ? "Disable Protection"
                     : "Enable Protection",
                 () => {
@@ -735,7 +1550,7 @@
                         }
                     );
 
-                    notifications?.info(
+                    notifications?.info?.(
                         enabled
                             ? "Wallet Protection enabled."
                             : "Wallet Protection disabled.",
@@ -747,12 +1562,6 @@
                                 "protection",
                         }
                     );
-                },
-                {
-                    primary:
-                        !settings.get(
-                            "enabled"
-                        ),
                 }
             ),
 
@@ -765,10 +1574,46 @@
                                 "protection-ui"
                             );
 
+                    evaluate();
                     refreshIfActive();
                 }
             )
         );
+
+        const safetyNotice =
+            createElement(
+                "div",
+                {
+                    text:
+                        "TACTIC will not click the deposit or confirmation controls. Review the prepared amount and submit it yourself.",
+
+                    styles: {
+                        marginTop:
+                            "12px",
+
+                        padding:
+                            "10px 12px",
+
+                        border:
+                            "1px solid rgba(245,166,35,.25)",
+
+                        borderRadius:
+                            "6px",
+
+                        background:
+                            "rgba(245,166,35,.07)",
+
+                        color:
+                            "#ddd",
+
+                        fontSize:
+                            "11px",
+
+                        lineHeight:
+                            "1.45",
+                    },
+                }
+            );
 
         const settingsSection =
             createElement(
@@ -787,28 +1632,12 @@
                 }
             );
 
-        const settingsHeading =
-            createElement(
-                "h3",
-                {
-                    text:
-                        "Protection Settings",
-
-                    styles: {
-                        margin:
-                            "0",
-
-                        color:
-                            "#eee",
-
-                        fontSize:
-                            "14px",
-                    },
-                }
-            );
-
         settingsSection.append(
-            settingsHeading,
+            createSectionHeading(
+                "Protection Settings"
+            ),
+
+            createDestinationSetting(),
 
             createNumberSetting(
                 "Activation Threshold",
@@ -821,8 +1650,15 @@
             ),
 
             createNumberSetting(
-                "Maximum Transaction",
-                "maximumAutomaticDeposit"
+                "Maximum Prepared Amount",
+                "maximumAutomaticDeposit",
+                {
+                    minimum:
+                        1,
+
+                    maximum:
+                        1000000000,
+                }
             )
         );
 
@@ -832,6 +1668,7 @@
             status,
             grid,
             controls,
+            safetyNotice,
             settingsSection
         );
     }
@@ -845,35 +1682,65 @@
                 metrics.initializedAt !==
                 null,
 
-            wallet: {
-                ...latestWallet,
-            },
+            preparationInProgress,
+
+            wallet:
+                cloneValue(
+                    latestWallet
+                ),
 
             evaluation:
-                latestEvaluation
-                    ? {
-                          ...latestEvaluation,
-
-                          wallet: {
-                              ...latestEvaluation
-                                  .wallet,
-                          },
-
-                          configuration: {
-                              ...latestEvaluation
-                                  .configuration,
-                          },
-                      }
-                    : null,
+                cloneValue(
+                    latestEvaluation
+                ),
 
             configuration:
                 getConfiguration(),
 
+            latestActionResult:
+                cloneValue(
+                    latestActionResult
+                ),
+
+            destinations:
+                getDestinations(),
+
+            action: {
+                id:
+                    ACTION_ID,
+
+                registered:
+                    actions.has(
+                        ACTION_ID
+                    ),
+
+                authorized:
+                    capabilities?.can(
+                        "deposit.prepare"
+                    ) === true,
+
+                definition:
+                    actions.get(
+                        ACTION_ID
+                    ),
+            },
+
             metrics: {
                 ...metrics,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
+                        : null,
             },
         };
     }
+
+    TACTIC.protection.prepareDeposit =
+        prepareDeposit;
 
     TACTIC.protection.inspect =
         inspect;
@@ -889,7 +1756,7 @@
             "🛡",
 
         version:
-            "1.0.0",
+            "1.1.0",
 
         order:
             100,
@@ -957,14 +1824,23 @@
                         .HEALTH_STATES
                         .HEALTHY,
 
+                staleAfterMs:
+                    null,
+
                 metadata: {
                     moduleId:
                         MODULE_ID,
 
-                    phase:
-                        "safe-foundation",
+                    actionId:
+                        ACTION_ID,
 
-                    automaticTransactions:
+                    publicPreparation:
+                        true,
+
+                    automaticSubmission:
+                        false,
+
+                    automaticConfirmation:
                         false,
 
                     requiresHeartbeat:
@@ -973,7 +1849,14 @@
             });
 
             logger?.info(
-                "Protection module initialized"
+                "Protection module initialized",
+                {
+                    action:
+                        ACTION_ID,
+
+                    automaticSubmission:
+                        false,
+                }
             );
         },
 
