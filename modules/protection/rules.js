@@ -8,25 +8,20 @@
  * modules/protection/rules.js
  *
  * Purpose:
- * Provides pure wallet-protection calculations and validation.
+ * Provides pure Wallet Protection calculations and deposit-plan
+ * evaluation.
  *
  * Responsibilities:
  * - Validate wallet and configuration values
- * - Calculate automatic deposit amounts
+ * - Calculate recommended deposit amounts
+ * - Include the selected deposit destination
  * - Explain why a deposit is or is not needed
- * - Expose immutable rule diagnostics
  *
  * Does NOT:
- * - Read the DOM
- * - Navigate to the faction bank
- * - Click deposit controls
- * - Store settings or transaction state
- * - Render user interfaces
- *
- * Public API:
- * - TACTIC.protection.rules.calculateDeposit()
- * - TACTIC.protection.rules.evaluate()
- * - TACTIC.protection.rules.inspect()
+ * - Read or modify the DOM
+ * - Navigate
+ * - Fill or submit deposit forms
+ * - Persist transaction state
  *
  * ============================================================
  */
@@ -96,6 +91,9 @@
         lastDeposit:
             null,
 
+        lastDestination:
+            null,
+
         lastReason:
             null,
     };
@@ -126,6 +124,12 @@
             enabled:
                 configuration.enabled !==
                 false,
+
+            destination:
+                String(
+                    configuration.destination ||
+                    "faction-bank"
+                ),
 
             threshold:
                 normalizeInteger(
@@ -170,14 +174,9 @@
             !Number.isSafeInteger(
                 numericWallet
             ) ||
-            numericWallet < 0
-        ) {
-            return 0;
-        }
-
-        if (
+            numericWallet < 0 ||
             numericWallet <=
-            normalized.threshold
+                normalized.threshold
         ) {
             return 0;
         }
@@ -188,12 +187,7 @@
                 normalized.reserve
             );
 
-        if (
-            !Number.isSafeInteger(
-                excess
-            ) ||
-            excess <= 0
-        ) {
+        if (excess <= 0) {
             return 0;
         }
 
@@ -275,9 +269,7 @@
                     normalized
                 );
 
-            if (
-                depositAmount <= 0
-            ) {
+            if (depositAmount <= 0) {
                 reason =
                     REASONS
                         .NO_EXCESS_FUNDS;
@@ -305,6 +297,9 @@
         metrics.lastDeposit =
             depositAmount;
 
+        metrics.lastDestination =
+            normalized.destination;
+
         metrics.lastReason =
             reason;
 
@@ -312,6 +307,9 @@
             shouldDeposit,
 
             reason,
+
+            destination:
+                normalized.destination,
 
             wallet: {
                 available:
