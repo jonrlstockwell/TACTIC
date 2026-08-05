@@ -14,10 +14,11 @@
  * Responsibilities:
  * - Read and parse the player's wallet balance
  * - Maintain the latest wallet snapshot
+ * - Publish the latest wallet snapshot to shared State
  * - Watch the wallet for live changes
- * - Notify subscribers when wallet data changes
+ * - Notify repository subscribers when wallet data changes
  * - Expose repository diagnostics and metrics
- * - Integrate with Health, Events, Logger, and Errors
+ * - Integrate with State, Health, Events, Logger, and Errors
  *
  * Does NOT:
  * - Deposit or withdraw money
@@ -36,9 +37,13 @@
  * - isStarted()
  * - inspect()
  *
+ * Shared State:
+ * - user.wallet
+ *
  * Dependencies:
  * - services/dom/index.js
  * - services/dom/selectors.js
+ * - services/state/index.js
  * - core/events.js
  * - core/logger.js
  * - core/errors.js
@@ -68,6 +73,8 @@
 
     const {
         dom,
+        state:
+            sharedState,
         events,
         logger,
         errors,
@@ -83,6 +90,14 @@
     if (!dom) {
         console.error(
             "[TACTIC User Repository] DOM service is unavailable."
+        );
+
+        return;
+    }
+
+    if (!sharedState) {
+        console.error(
+            "[TACTIC User Repository] State service is unavailable."
         );
 
         return;
@@ -120,6 +135,12 @@
                 "wallet",
         });
 
+    const STATE_KEYS =
+        Object.freeze({
+            WALLET:
+                "user.wallet",
+        });
+
     const subscribers =
         new Map([
             [
@@ -128,7 +149,7 @@
             ],
         ]);
 
-    const state = {
+    const repositoryState = {
         started:
             false,
 
@@ -161,6 +182,18 @@
         walletChanges:
             0,
 
+        statePublishes:
+            0,
+
+        statePublishChanges:
+            0,
+
+        statePublishNoChanges:
+            0,
+
+        statePublishFailures:
+            0,
+
         subscriptionCount:
             0,
 
@@ -186,6 +219,9 @@
             null,
 
         lastWalletChangeAt:
+            null,
+
+        lastStatePublishAt:
             null,
 
         lastErrorAt:
@@ -250,15 +286,18 @@
                         operation,
 
                     started:
-                        state.started,
+                        repositoryState
+                            .started,
 
                     walletAvailable:
-                        state.wallet
+                        repositoryState
+                            .wallet
                             ?.available ===
                         true,
 
                     walletValue:
-                        state.wallet
+                        repositoryState
+                            .wallet
                             ?.value ??
                         null,
 
@@ -269,6 +308,14 @@
                             )
                             ?.size ||
                         0,
+
+                    stateKey:
+                        STATE_KEYS.WALLET,
+
+                    statePublished:
+                        sharedState.has(
+                            STATE_KEYS.WALLET
+                        ),
 
                     ...metadata,
                 },
@@ -477,6 +524,127 @@
         });
     }
 
+    function publishWalletState(
+        wallet,
+        reason,
+        options = {}
+    ) {
+        metrics.statePublishes +=
+            1;
+
+        metrics.lastStatePublishAt =
+            Date.now();
+
+        try {
+            const result =
+                sharedState.set(
+                    STATE_KEYS.WALLET,
+                    wallet,
+                    {
+                        source:
+                            "repository:user",
+
+                        force:
+                            options.force ===
+                            true,
+
+                        metadata: {
+                            repository:
+                                "user",
+
+                            dataKey:
+                                DATA_KEYS.WALLET,
+
+                            reason,
+
+                            available:
+                                wallet
+                                    ?.available ===
+                                true,
+
+                            value:
+                                wallet
+                                    ?.value ??
+                                null,
+                        },
+                    }
+                );
+
+            if (
+                result.changed ===
+                true
+            ) {
+                metrics
+                    .statePublishChanges +=
+                    1;
+            } else {
+                metrics
+                    .statePublishNoChanges +=
+                    1;
+            }
+
+            return result;
+        } catch (error) {
+            metrics
+                .statePublishFailures +=
+                1;
+
+            reportRepositoryError({
+                code:
+                    ERROR_CODES
+                        .GENERAL
+                        .INTERNAL,
+
+                severity:
+                    SEVERITY.ERROR,
+
+                message:
+                    "User Repository could not publish the wallet to shared State.",
+
+                details: {
+                    stateKey:
+                        STATE_KEYS.WALLET,
+
+                    reason,
+
+                    wallet:
+                        cloneValue(
+                            wallet
+                        ),
+                },
+
+                error,
+
+                recoverable:
+                    true,
+
+                retryable:
+                    true,
+
+                recovery:
+                    "Verify that the State service is loaded before the User Repository.",
+            });
+
+            return {
+                changed:
+                    false,
+
+                failed:
+                    true,
+
+                error: {
+                    name:
+                        error?.name ||
+                        "Error",
+
+                    message:
+                        error?.message ||
+                        String(error),
+                },
+            };
+        }
+    }
+
     function notifySubscribers(
         dataKey,
         value,
@@ -604,6 +772,9 @@
                 repository:
                     "user",
 
+                stateKey:
+                    STATE_KEYS.WALLET,
+
                 timestamp:
                     Date.now(),
             }
@@ -616,7 +787,7 @@
         options = {}
     ) {
         const previousWallet =
-            state.wallet;
+            repositoryState.wallet;
 
         const changed =
             !walletSnapshotsEqual(
@@ -624,8 +795,26 @@
                 wallet
             );
 
-        state.wallet =
+        repositoryState.wallet =
             wallet;
+
+        /*
+         * Publish the latest repository snapshot to shared State
+         * even when repository subscribers do not need another
+         * notification.
+         *
+         * State suppresses equal values unless force is requested.
+         */
+        const stateResult =
+            publishWalletState(
+                wallet,
+                reason,
+                {
+                    force:
+                        options.forceStateNotify ===
+                        true,
+                }
+            );
 
         if (
             !changed &&
@@ -636,12 +825,20 @@
                 "wallet-unchanged",
                 {
                     reason,
+
+                    stateChanged:
+                        stateResult.changed ===
+                        true,
                 }
             );
 
             return {
                 changed:
                     false,
+
+                stateChanged:
+                    stateResult.changed ===
+                    true,
 
                 wallet:
                     cloneValue(
@@ -681,11 +878,19 @@
 
                 walletValue:
                     wallet.value,
+
+                stateChanged:
+                    stateResult.changed ===
+                    true,
             }
         );
 
         return {
             changed:
+                true,
+
+            stateChanged:
+                stateResult.changed ===
                 true,
 
             wallet:
@@ -817,7 +1022,7 @@
         if (
             options.refresh ===
             true ||
-            state.wallet ===
+            repositoryState.wallet ===
                 null
         ) {
             refreshWallet(
@@ -827,13 +1032,14 @@
         }
 
         return cloneValue(
-            state.wallet
+            repositoryState.wallet
         );
     }
 
     function refreshWallet(
         reason =
-            "manual-refresh"
+            "manual-refresh",
+        options = {}
     ) {
         metrics.walletRefreshes +=
             1;
@@ -845,7 +1051,8 @@
 
         updateWalletState(
             wallet,
-            reason
+            reason,
+            options
         );
 
         return cloneValue(
@@ -1122,6 +1329,9 @@
 
                         dataKey:
                             DATA_KEYS.WALLET,
+
+                        stateKey:
+                            STATE_KEYS.WALLET,
                     },
                 }
             );
@@ -1163,17 +1373,19 @@
     }
 
     async function start() {
-        if (state.started) {
+        if (
+            repositoryState.started
+        ) {
             return inspect();
         }
 
-        state.started =
+        repositoryState.started =
             true;
 
-        state.startedAt =
+        repositoryState.startedAt =
             Date.now();
 
-        state.stoppedAt =
+        repositoryState.stoppedAt =
             null;
 
         metrics.startCount +=
@@ -1188,6 +1400,9 @@
                 metadata: {
                     started:
                         true,
+
+                    stateKey:
+                        STATE_KEYS.WALLET,
                 },
             }
         );
@@ -1215,6 +1430,9 @@
 
                         walletWatcherActive:
                             false,
+
+                        stateKey:
+                            STATE_KEYS.WALLET,
                     },
                 }
             );
@@ -1231,6 +1449,9 @@
 
                         walletWatcherActive:
                             true,
+
+                        stateKey:
+                            STATE_KEYS.WALLET,
                     },
                 }
             );
@@ -1249,6 +1470,9 @@
             {
                 walletWatcherActive:
                     watcherStarted,
+
+                stateKey:
+                    STATE_KEYS.WALLET,
             }
         );
 
@@ -1256,7 +1480,9 @@
     }
 
     function stop() {
-        if (!state.started) {
+        if (
+            !repositoryState.started
+        ) {
             return false;
         }
 
@@ -1264,10 +1490,10 @@
             OBSERVER_GROUP
         );
 
-        state.started =
+        repositoryState.started =
             false;
 
-        state.stoppedAt =
+        repositoryState.stoppedAt =
             Date.now();
 
         metrics.stopCount +=
@@ -1285,6 +1511,9 @@
 
                     walletWatcherActive:
                         false,
+
+                    stateKey:
+                        STATE_KEYS.WALLET,
                 },
             }
         );
@@ -1301,7 +1530,8 @@
     }
 
     function isStarted() {
-        return state.started;
+        return repositoryState
+            .started;
     }
 
     function inspect() {
@@ -1316,26 +1546,55 @@
                 "user",
 
             started:
-                state.started,
+                repositoryState
+                    .started,
 
             startedAt:
-                state.startedAt,
+                repositoryState
+                    .startedAt,
 
             stoppedAt:
-                state.stoppedAt,
+                repositoryState
+                    .stoppedAt,
 
             uptimeMs:
-                state.startedAt ===
+                repositoryState
+                    .startedAt ===
                     null ||
-                !state.started
+                !repositoryState
+                    .started
                     ? 0
                     : Date.now() -
-                      state.startedAt,
+                      repositoryState
+                          .startedAt,
 
             wallet:
                 cloneValue(
-                    state.wallet
+                    repositoryState
+                        .wallet
                 ),
+
+            sharedState: {
+                key:
+                    STATE_KEYS.WALLET,
+
+                published:
+                    sharedState.has(
+                        STATE_KEYS.WALLET
+                    ),
+
+                value:
+                    sharedState.get(
+                        STATE_KEYS.WALLET,
+                        null
+                    ),
+
+                revision:
+                    sharedState
+                        .getRevision(
+                            STATE_KEYS.WALLET
+                        ),
+            },
 
             walletWatcher: {
                 name:
@@ -1365,6 +1624,10 @@
             dataKeys: {
                 ...DATA_KEYS,
             },
+
+            stateKeys: {
+                ...STATE_KEYS,
+            },
         };
     }
 
@@ -1384,6 +1647,9 @@
 
             keys:
                 DATA_KEYS,
+
+            stateKeys:
+                STATE_KEYS,
         });
 
     TACTIC.repositories.user =
@@ -1408,6 +1674,10 @@
 
             dataKeys: [
                 DATA_KEYS.WALLET,
+            ],
+
+            stateKeys: [
+                STATE_KEYS.WALLET,
             ],
 
             requiresHeartbeat:
@@ -1470,6 +1740,10 @@
     );
 
     logger?.info(
-        "User Repository loaded"
+        "User Repository loaded",
+        {
+            stateKey:
+                STATE_KEYS.WALLET,
+        }
     );
 })();
