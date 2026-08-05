@@ -814,8 +814,7 @@
             {
                 metadata: {
                     lastCapability:
-                        decision
-                            .capability,
+                        decision.capability,
 
                     lastDecision:
                         decision.allowed,
@@ -1111,6 +1110,9 @@
 
         status:
             HEALTH_STATES.HEALTHY,
+
+        staleAfterMs:
+            null,
 
         metadata: {
             serviceName:
