@@ -70,9 +70,17 @@
 // ============================================================
 // SHARED DEPOSIT SERVICE
 // ============================================================
-//
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=2
+
+
+// ============================================================
+// ACTION SERVICE
+// ============================================================
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=1
 //
 //
 // ============================================================
