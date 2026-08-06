@@ -144,6 +144,14 @@
 //
 //
 // ============================================================
+// FINANCE ENGINE
+// Shared financial calculations and recommendation logic.
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/index.js?v=1
+//
+//
+// ============================================================
 // DEPOSIT SERVICES
 // ============================================================
 //
