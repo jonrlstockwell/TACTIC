@@ -12,13 +12,12 @@
 // CORE FRAMEWORK
 // ============================================================
 
-// Namespace must load before every other TACTIC file.
+// Namespace must load first.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
 
-// Shared framework definitions.
+// Shared definitions.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=1
 
 // Core infrastructure.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/logger.js?v=2
@@ -29,6 +28,9 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/utilities.js?v=1
+
+// Developer state depends on Events.
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=2
 
 // ============================================================
 // REPOSITORIES
