@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TACTIC Modular Dev
 // @namespace    https://github.com/jonrlstockwell/TACTIC
-// @version      0.3.1-dev
+// @version      0.3.5-dev
 // @description  Torn Assistant & Companion Toolkit (Development Build)
 // @author       Jon Stockwell
 // @match        https://www.torn.com/*
@@ -179,7 +179,7 @@
 // Finance application shell. Individual Finance sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=3
 //
 //
 // ============================================================

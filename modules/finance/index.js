@@ -112,7 +112,7 @@
         "finance:active-tab";
 
     const MODULE_VERSION =
-        "1.1.0";
+        "1.2.0";
 
     const MODULE_ORDER =
         200;
@@ -135,6 +135,9 @@
 
     const storage =
         services.storage;
+
+    const financeAdvisor =
+        services.financeAdvisor;
 
     if (!drawer) {
         console.error(
@@ -206,6 +209,15 @@
         overviewRenders:
             0,
 
+        advisorEvaluations:
+            0,
+
+        advisorEvaluationFailures:
+            0,
+
+        advisorActions:
+            0,
+
         sectionRenders:
             0,
 
@@ -246,6 +258,12 @@
             null,
 
         lastTabChangedAt:
+            null,
+
+        lastAdvisorEvaluationAt:
+            null,
+
+        lastAdvisorActionAt:
             null,
 
         lastSectionEventAt:
@@ -1213,6 +1231,636 @@
         );
     }
 
+    function getAdvisorPriorityPresentation(
+        priority
+    ) {
+        switch (priority) {
+            case "critical":
+                return {
+                    label:
+                        "Immediate",
+
+                    icon:
+                        "🚨",
+
+                    background:
+                        "rgba(220,70,70,.10)",
+
+                    border:
+                        "rgba(220,70,70,.30)",
+
+                    color:
+                        "#ffaaaa",
+                };
+
+            case "high":
+                return {
+                    label:
+                        "High Priority",
+
+                    icon:
+                        "⚠️",
+
+                    background:
+                        "rgba(245,166,35,.10)",
+
+                    border:
+                        "rgba(245,166,35,.30)",
+
+                    color:
+                        "#ffcc80",
+                };
+
+            case "medium":
+                return {
+                    label:
+                        "Recommended",
+
+                    icon:
+                        "💡",
+
+                    background:
+                        "rgba(75,145,230,.09)",
+
+                    border:
+                        "rgba(75,145,230,.28)",
+
+                    color:
+                        "#90caf9",
+                };
+
+            case "low":
+                return {
+                    label:
+                        "Planning",
+
+                    icon:
+                        "📌",
+
+                    background:
+                        "rgba(156,136,255,.08)",
+
+                    border:
+                        "rgba(156,136,255,.24)",
+
+                    color:
+                        "#c5baff",
+                };
+
+            case "informational":
+            default:
+                return {
+                    label:
+                        "Status",
+
+                    icon:
+                        "✓",
+
+                    background:
+                        "rgba(76,175,80,.07)",
+
+                    border:
+                        "rgba(76,175,80,.22)",
+
+                    color:
+                        "#a5d6a7",
+                };
+        }
+    }
+
+    function getAdvisorEvaluation(
+        financeRepository
+    ) {
+        if (
+            !financeAdvisor ||
+            typeof financeAdvisor.evaluate !==
+                "function"
+        ) {
+            return null;
+        }
+
+        metrics.advisorEvaluations +=
+            1;
+
+        metrics.lastAdvisorEvaluationAt =
+            Date.now();
+
+        try {
+            const wallet =
+                financeRepository
+                    ?.getWallet?.() ||
+                null;
+
+            const investmentBank =
+                financeRepository
+                    ?.getInvestmentBank?.() ||
+                null;
+
+            const protection =
+                TACTIC.protection
+                    ?.inspect?.() ||
+                null;
+
+            return financeAdvisor.evaluate({
+                wallet,
+                protection,
+                investmentBank,
+            });
+        } catch (error) {
+            metrics.advisorEvaluationFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Overview Advisor evaluation failed",
+                {
+                    error,
+                }
+            );
+
+            return null;
+        }
+    }
+
+    async function executeAdvisorAction(
+        recommendation
+    ) {
+        const action =
+            recommendation
+                ?.action;
+
+        if (
+            !action ||
+            action.available !==
+                true
+        ) {
+            return {
+                success:
+                    false,
+
+                executed:
+                    false,
+
+                reason:
+                    "advisor-action-unavailable",
+            };
+        }
+
+        metrics.advisorActions +=
+            1;
+
+        metrics.lastAdvisorActionAt =
+            Date.now();
+
+        if (
+            action.type ===
+                "open-finance-tab" &&
+            action.target
+        ) {
+            return setActiveTab(
+                action.target,
+                {
+                    source:
+                        "finance-advisor-overview",
+                }
+            );
+        }
+
+        if (
+            action.type ===
+                "open-tactic-module" &&
+            action.target
+        ) {
+            const navigationMethods = [
+                "openModule",
+                "activateModule",
+                "selectModule",
+                "showModule",
+            ];
+
+            for (
+                const methodName of
+                navigationMethods
+            ) {
+                if (
+                    typeof drawer?.[
+                        methodName
+                    ] ===
+                    "function"
+                ) {
+                    const result =
+                        await drawer[
+                            methodName
+                        ](
+                            action.target
+                        );
+
+                    return {
+                        success:
+                            true,
+
+                        executed:
+                            true,
+
+                        action:
+                            action.type,
+
+                        target:
+                            action.target,
+
+                        result,
+                    };
+                }
+            }
+
+            return {
+                success:
+                    false,
+
+                executed:
+                    false,
+
+                reason:
+                    "drawer-module-navigation-unavailable",
+            };
+        }
+
+        return {
+            success:
+                false,
+
+            executed:
+                false,
+
+            reason:
+                "unsupported-advisor-action",
+        };
+    }
+
+    function createAdvisorOverview(
+        financeRepository
+    ) {
+        const evaluation =
+            getAdvisorEvaluation(
+                financeRepository
+            );
+
+        const recommendation =
+            evaluation?.primary ||
+            null;
+
+        const presentation =
+            getAdvisorPriorityPresentation(
+                recommendation
+                    ?.priority
+            );
+
+        const section =
+            createElement(
+                "section",
+                {
+                    className:
+                        "tactic-finance-advisor-overview",
+
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "9px",
+
+                        padding:
+                            "13px",
+
+                        border:
+                            `1px solid ${presentation.border}`,
+
+                        borderRadius:
+                            "8px",
+
+                        background:
+                            presentation.background,
+                    },
+                }
+            );
+
+        const headingRow =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "flex",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "space-between",
+
+                        gap:
+                            "10px",
+                    },
+                }
+            );
+
+        const heading =
+            createElement(
+                "div",
+                {
+                    text:
+                        "Financial Advisor",
+
+                    styles: {
+                        color:
+                            "#f2f2f2",
+
+                        fontSize:
+                            "14px",
+
+                        fontWeight:
+                            "800",
+                    },
+                }
+            );
+
+        const priorityBadge =
+            createElement(
+                "div",
+                {
+                    text:
+                        `${presentation.icon} ${presentation.label}`,
+
+                    styles: {
+                        flex:
+                            "0 0 auto",
+
+                        padding:
+                            "4px 8px",
+
+                        border:
+                            `1px solid ${presentation.border}`,
+
+                        borderRadius:
+                            "999px",
+
+                        color:
+                            presentation.color,
+
+                        fontSize:
+                            "9px",
+
+                        fontWeight:
+                            "800",
+
+                        letterSpacing:
+                            ".03em",
+
+                        textTransform:
+                            "uppercase",
+                    },
+                }
+            );
+
+        headingRow.append(
+            heading,
+            priorityBadge
+        );
+
+        section.appendChild(
+            headingRow
+        );
+
+        if (!recommendation) {
+            section.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            financeAdvisor
+                                ? "TACTIC could not create a financial recommendation from the currently available data."
+                                : "The Finance Advisor service is unavailable.",
+
+                        styles: {
+                            color:
+                                "#aaa",
+
+                            fontSize:
+                                "11px",
+
+                            lineHeight:
+                                "1.45",
+                        },
+                    }
+                )
+            );
+
+            return section;
+        }
+
+        const recommendationTitle =
+            createElement(
+                "div",
+                {
+                    text:
+                        recommendation.title,
+
+                    styles: {
+                        color:
+                            presentation.color,
+
+                        fontSize:
+                            "15px",
+
+                        fontWeight:
+                            "800",
+
+                        lineHeight:
+                            "1.3",
+                    },
+                }
+            );
+
+        const message =
+            createElement(
+                "div",
+                {
+                    text:
+                        recommendation.message,
+
+                    styles: {
+                        color:
+                            "#ddd",
+
+                        fontSize:
+                            "11px",
+
+                        lineHeight:
+                            "1.5",
+                    },
+                }
+            );
+
+        const reason =
+            createElement(
+                "div",
+                {
+                    text:
+                        recommendation.reason,
+
+                    styles: {
+                        paddingTop:
+                            "7px",
+
+                        borderTop:
+                            "1px solid rgba(255,255,255,.09)",
+
+                        color:
+                            "#929292",
+
+                        fontSize:
+                            "9px",
+
+                        lineHeight:
+                            "1.4",
+                    },
+                }
+            );
+
+        section.append(
+            recommendationTitle,
+            message,
+            reason
+        );
+
+        if (
+            recommendation
+                .action
+                ?.available ===
+                true
+        ) {
+            const actionButton =
+                createElement(
+                    "button",
+                    {
+                        text:
+                            recommendation
+                                .action
+                                .label ||
+                            "Review Recommendation",
+
+                        attributes: {
+                            type:
+                                "button",
+                        },
+
+                        styles: {
+                            boxSizing:
+                                "border-box",
+
+                            width:
+                                "100%",
+
+                            padding:
+                                "9px 11px",
+
+                            border:
+                                `1px solid ${presentation.border}`,
+
+                            borderRadius:
+                                "5px",
+
+                            background:
+                                "rgba(255,255,255,.055)",
+
+                            color:
+                                presentation.color,
+
+                            cursor:
+                                "pointer",
+
+                            fontSize:
+                                "11px",
+
+                            fontWeight:
+                                "800",
+                        },
+                    }
+                );
+
+            actionButton.addEventListener(
+                "click",
+                async () => {
+                    try {
+                        await executeAdvisorAction(
+                            recommendation
+                        );
+                    } catch (error) {
+                        metrics.lastError =
+                            createErrorSnapshot(
+                                error
+                            );
+
+                        logger?.error(
+                            "Finance Advisor action failed",
+                            {
+                                recommendation,
+                                error,
+                            }
+                        );
+                    }
+                }
+            );
+
+            section.appendChild(
+                actionButton
+            );
+        }
+
+        if (
+            evaluation
+                ?.counts
+                ?.total >
+            1
+        ) {
+            section.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `${evaluation.counts.total - 1} additional financial recommendation${
+                                evaluation.counts.total -
+                                    1 ===
+                                1
+                                    ? ""
+                                    : "s"
+                            } available for future Advisor expansion.`,
+
+                        styles: {
+                            color:
+                                "#777",
+
+                            fontSize:
+                                "9px",
+
+                            lineHeight:
+                                "1.4",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                )
+            );
+        }
+
+        return section;
+    }
+
     function createWalletOverview(
         financeRepository
     ) {
@@ -1646,6 +2294,12 @@
                     },
                 }
             );
+
+        overview.appendChild(
+            createAdvisorOverview(
+                repository
+            )
+        );
 
         if (
             sectionManager.has(
@@ -2238,6 +2892,25 @@
 
             sectionManager:
                 sectionManager.inspect(),
+
+            advisor: {
+                available:
+                    Boolean(
+                        financeAdvisor
+                    ),
+
+                lastEvaluation:
+                    financeAdvisor
+                        ?.inspect?.()
+                        ?.lastEvaluation ||
+                    null,
+
+                lastPrimaryRecommendation:
+                    financeAdvisor
+                        ?.inspect?.()
+                        ?.lastPrimaryRecommendation ||
+                    null,
+            },
 
             repository: {
                 financeAvailable:
