@@ -58,6 +58,10 @@
 (() => {
     "use strict";
 
+    console.log(
+    "[TACTIC Dependencies] File execution started"
+    );
+
     const TACTIC =
         globalThis.TACTIC;
 
