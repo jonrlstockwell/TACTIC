@@ -8,42 +8,35 @@
  * repositories/finance/index.js
  *
  * Purpose:
- * Provides a centralized, observable source of financial data
- * for TACTIC.
+ * Provides TACTIC's centralized source of observable financial
+ * data.
  *
- * Initial Scope:
+ * Current Domains:
  * - Wallet
- *
- * Planned Scope:
- * - Personal vault
- * - Faction bank
- * - City bank investments
- * - Stocks
- * - Bazaar
- * - Properties
- * - Company funds
- * - Net worth
+ * - Investment Bank
  *
  * Responsibilities:
- * - Read and parse the player's wallet balance
- * - Watch the wallet for live changes
- * - Store current and previous wallet values
- * - Calculate wallet deltas
- * - Publish wallet data to shared State
- * - Notify subscribers when wallet data changes
- * - Emit finance-specific events
- * - Expose repository diagnostics and metrics
+ * - Observe and publish the player's wallet
+ * - Read Investment Bank data through its registered DOM helper
+ * - Publish normalized financial state
+ * - Calculate live Investment Bank comparisons
+ * - Generate strategy-based investment recommendations
+ * - Notify subscribers when financial data changes
+ * - Expose repository diagnostics
  *
  * Does NOT:
- * - Deposit or withdraw money
- * - Decide whether money should be moved
- * - Contain Protection business rules
- * - Render user-facing interfaces
- * - Guess unverified Torn selectors
+ * - Submit deposits
+ * - Start or withdraw investments
+ * - Click financial controls
+ * - Render user interfaces
  *
  * Public API:
  * - getWallet()
  * - refreshWallet()
+ * - getInvestmentBank()
+ * - refreshInvestmentBank()
+ * - setInvestmentStrategy()
+ * - getInvestmentStrategy()
  * - subscribe()
  * - unsubscribe()
  * - start()
@@ -53,6 +46,7 @@
  *
  * Shared State:
  * - finance.wallet
+ * - finance.investmentBank
  *
  * ============================================================
  */
@@ -71,26 +65,26 @@
         return;
     }
 
-    const {
-        services,
-        constants,
-    } = TACTIC;
+    const services =
+        TACTIC.services || {};
 
-    const {
-        dom,
-        state:
-            sharedState,
-        events,
-        logger,
-        errors,
-        health,
-    } = services;
+    const dom =
+        services.dom;
 
-    const {
-        ERROR_CODES,
-        SEVERITY,
-        HEALTH_STATES,
-    } = constants;
+    const sharedState =
+        services.state;
+
+    const events =
+        services.events;
+
+    const logger =
+        services.logger;
+
+    const health =
+        services.health;
+
+    const financeEngine =
+        services.finance;
 
     if (!dom) {
         console.error(
@@ -103,6 +97,14 @@
     if (!sharedState) {
         console.error(
             "[TACTIC Finance Repository] State service is unavailable."
+        );
+
+        return;
+    }
+
+    if (!financeEngine) {
+        console.error(
+            "[TACTIC Finance Repository] Finance Engine is unavailable."
         );
 
         return;
@@ -122,34 +124,64 @@
     const WALLET_OBSERVER_NAME =
         "repository:finance:wallet";
 
-    const OBSERVER_GROUP =
-        "repository:finance";
+    const WALLET_OBSERVER_GROUP =
+        "repository:finance:wallet";
+
+    const BANK_OBSERVER_GROUP =
+        "repository:finance:investment-bank";
+
+    const BANK_HELPER_ID =
+        "investment-bank";
 
     const WALLET_SELECTOR_PATH =
         "USER.WALLET";
+
+    const DEFAULT_STRATEGY =
+        financeEngine.strategies
+            ?.MAXIMUM_RETURN ||
+        "maximum-return";
+
+    const BANK_REFRESH_DEBOUNCE_MS =
+        350;
 
     const DATA_KEYS =
         Object.freeze({
             WALLET:
                 "wallet",
+
+            INVESTMENT_BANK:
+                "investmentBank",
         });
 
     const STATE_KEYS =
         Object.freeze({
             WALLET:
                 "finance.wallet",
+
+            INVESTMENT_BANK:
+                "finance.investmentBank",
         });
 
     const EVENT_NAMES =
         Object.freeze({
             WALLET_CHANGED:
                 "finance:wallet-changed",
+
+            INVESTMENT_BANK_CHANGED:
+                "finance:investment-bank-changed",
+
+            INVESTMENT_STRATEGY_CHANGED:
+                "finance:investment-strategy-changed",
         });
 
     const subscribers =
         new Map([
             [
                 DATA_KEYS.WALLET,
+                new Set(),
+            ],
+            [
+                DATA_KEYS.INVESTMENT_BANK,
                 new Set(),
             ],
         ]);
@@ -166,10 +198,16 @@
 
         wallet:
             null,
+
+        investmentBank:
+            null,
+
+        investmentStrategy:
+            DEFAULT_STRATEGY,
     };
 
     const metrics = {
-        createdAt:
+        loadedAt:
             Date.now(),
 
         startCount:
@@ -187,31 +225,37 @@
         walletChanges:
             0,
 
-        walletIncreases:
+        walletNoChanges:
             0,
 
-        walletDecreases:
+        bankReads:
             0,
 
-        walletNoChange:
+        bankRefreshes:
+            0,
+
+        bankChanges:
+            0,
+
+        bankNoChanges:
+            0,
+
+        bankUnavailableReads:
+            0,
+
+        bankRecommendationCalculations:
+            0,
+
+        bankRecommendationFailures:
+            0,
+
+        strategyChanges:
             0,
 
         statePublishes:
             0,
 
-        statePublishChanges:
-            0,
-
-        statePublishNoChanges:
-            0,
-
         statePublishFailures:
-            0,
-
-        subscriptionCount:
-            0,
-
-        unsubscriptionCount:
             0,
 
         subscriberNotifications:
@@ -220,33 +264,36 @@
         subscriberErrors:
             0,
 
-        parseFailures:
-            0,
-
-        unavailableReads:
-            0,
-
-        lastActivityAt:
-            Date.now(),
-
         lastWalletReadAt:
             null,
 
         lastWalletChangeAt:
             null,
 
-        lastWalletIncreaseAt:
+        lastBankReadAt:
             null,
 
-        lastWalletDecreaseAt:
+        lastBankChangeAt:
             null,
 
-        lastStatePublishAt:
+        lastRecommendationAt:
             null,
 
-        lastErrorAt:
+        lastStrategyChangeAt:
+            null,
+
+        lastActivityAt:
+            Date.now(),
+
+        lastError:
             null,
     };
+
+    let bankMutationObserver =
+        null;
+
+    let bankRefreshTimerId =
+        null;
 
     function cloneValue(
         value
@@ -271,24 +318,40 @@
             }
         }
 
-        if (
-            typeof value ===
-                "object"
-        ) {
-            try {
-                return JSON.parse(
-                    JSON.stringify(
-                        value
-                    )
-                );
-            } catch {
-                return {
-                    ...value,
-                };
-            }
+        try {
+            return JSON.parse(
+                JSON.stringify(
+                    value
+                )
+            );
+        } catch {
+            return value;
+        }
+    }
+
+    function createErrorSnapshot(
+        error
+    ) {
+        if (!error) {
+            return null;
         }
 
-        return value;
+        return {
+            name:
+                error?.name ||
+                "Error",
+
+            message:
+                error?.message ||
+                String(error),
+
+            stack:
+                error?.stack ||
+                null,
+
+            timestamp:
+                Date.now(),
+        };
     }
 
     function recordActivity(
@@ -298,7 +361,7 @@
         metrics.lastActivityAt =
             Date.now();
 
-        health?.heartbeat(
+        health?.heartbeat?.(
             REPOSITORY_NAME,
             {
                 metadata: {
@@ -315,44 +378,28 @@
                             ?.available ===
                         true,
 
-                    walletValue:
+                    investmentBankAvailable:
                         repositoryState
-                            .wallet
-                            ?.value ??
-                        null,
+                            .investmentBank
+                            ?.available ===
+                        true,
 
-                    walletPreviousValue:
+                    investmentStrategy:
                         repositoryState
-                            .wallet
-                            ?.previousValue ??
-                        null,
-
-                    walletDelta:
-                        repositoryState
-                            .wallet
-                            ?.delta ??
-                        null,
-
-                    walletSubscriberCount:
-                        subscribers
-                            .get(
-                                DATA_KEYS.WALLET
-                            )
-                            ?.size ||
-                        0,
-
-                    stateKey:
-                        STATE_KEYS.WALLET,
-
-                    statePublished:
-                        sharedState.has(
-                            STATE_KEYS.WALLET
-                        ),
+                            .investmentStrategy,
 
                     ...metadata,
                 },
             }
         );
+    }
+
+    function normalizeText(
+        value
+    ) {
+        return String(
+            value ?? ""
+        ).trim();
     }
 
     function getWalletSelector() {
@@ -372,19 +419,11 @@
         return "#user-money";
     }
 
-    function normalizeRawWallet(
-        rawValue
-    ) {
-        return String(
-            rawValue ?? ""
-        ).trim();
-    }
-
     function parseWalletValue(
         rawValue
     ) {
         const normalizedRaw =
-            normalizeRawWallet(
+            normalizeText(
                 rawValue
             );
 
@@ -400,12 +439,9 @@
 
         if (
             !numericText ||
-            numericText ===
-                "-" ||
-            numericText ===
-                "." ||
-            numericText ===
-                "-."
+            numericText === "-" ||
+            numericText === "." ||
+            numericText === "-."
         ) {
             return null;
         }
@@ -415,26 +451,22 @@
                 numericText
             );
 
-        if (
-            !Number.isFinite(
-                value
-            )
-        ) {
-            return null;
-        }
-
-        return value;
+        return Number.isFinite(
+            value
+        )
+            ? value
+            : null;
     }
 
     function createWalletSnapshot({
         raw,
         value,
-        available,
         source,
         elementFound,
-        previousWallet =
-            null,
     }) {
+        const previousWallet =
+            repositoryState.wallet;
+
         const normalizedValue =
             Number.isFinite(
                 value
@@ -475,7 +507,7 @@
                 DATA_KEYS.WALLET,
 
             raw:
-                normalizeRawWallet(
+                normalizeText(
                     raw
                 ),
 
@@ -494,14 +526,12 @@
             direction,
 
             available:
-                available ===
-                true,
+                normalizedValue !==
+                null,
 
             source:
-                String(
-                    source ||
-                    "unknown"
-                ),
+                source ||
+                "unknown",
 
             selector:
                 getWalletSelector(),
@@ -536,8 +566,6 @@
         return (
             first.value ===
                 second.value &&
-            first.raw ===
-                second.raw &&
             first.available ===
                 second.available &&
             first.elementFound ===
@@ -545,181 +573,553 @@
         );
     }
 
-    function createUnavailableWallet(
-        source
-    ) {
-        return createWalletSnapshot({
-            raw:
-                "",
+    function getBankHelper() {
+        return (
+            dom.pages
+                ?.getHelper?.(
+                    BANK_HELPER_ID
+                ) ||
+            null
+        );
+    }
 
-            value:
-                null,
+    function normalizeBankOption(
+        option
+    ) {
+        if (!option) {
+            return null;
+        }
+
+        return {
+            id:
+                option.id,
+
+            label:
+                option.label,
+
+            days:
+                option.days,
+
+            profitPercent:
+                option.profitPercent,
+
+            aprPercent:
+                option.aprPercent,
+
+            selected:
+                option.selected ===
+                true,
+
+            verified:
+                option.verified ===
+                true,
+
+            profitRateVerified:
+                option.verified ===
+                true,
+
+            aprVerified:
+                option.aprVerified ===
+                true,
+
+            source:
+                option.source ||
+                "investment-bank-helper",
+        };
+    }
+
+    function calculateBankAnalysis(
+        helperSnapshot
+    ) {
+        const walletValue =
+            Number.isFinite(
+                repositoryState
+                    .wallet
+                    ?.value
+            )
+                ? repositoryState
+                      .wallet
+                      .value
+                : 0;
+
+        const options =
+            (
+                helperSnapshot
+                    ?.options ||
+                []
+            )
+                .map(
+                    normalizeBankOption
+                )
+                .filter(
+                    option =>
+                        option &&
+                        Number.isFinite(
+                            option.days
+                        ) &&
+                        Number.isFinite(
+                            option.profitPercent
+                        )
+                );
+
+        const activeInvestment =
+            helperSnapshot
+                ?.currentInvestment ||
+            null;
+
+        /*
+         * When an investment is active, the original principal
+         * and historical rate are not verified by the page.
+         *
+         * Recommendation calculations therefore use:
+         * - Current wallet when no investment is active
+         * - A reconstructed principal only when a usable current
+         *   term rate is available, clearly marked estimated
+         */
+        let comparisonPrincipal =
+            walletValue;
+
+        let principalSource =
+            "wallet";
+
+        let principalEstimated =
+            false;
+
+        let activeEstimate =
+            null;
+
+        if (
+            activeInvestment
+                ?.active ===
+                true &&
+            Number.isFinite(
+                activeInvestment
+                    ?.payout
+                    ?.value
+            )
+        ) {
+            const selectedTerm =
+                activeInvestment
+                    .selectedTerm;
+
+            const selectedCurrentOption =
+                options.find(
+                    option =>
+                        option.id ===
+                        selectedTerm
+                            ?.id
+                );
+
+            if (
+                selectedCurrentOption &&
+                Number.isFinite(
+                    selectedCurrentOption
+                        .profitPercent
+                )
+            ) {
+                try {
+                    activeEstimate =
+                        financeEngine
+                            .estimatePrincipalFromPayout({
+                                payout:
+                                    activeInvestment
+                                        .payout
+                                        .value,
+
+                                profitPercent:
+                                    selectedCurrentOption
+                                        .profitPercent,
+
+                                options: {
+                                    roundTo:
+                                        1_000_000,
+
+                                    payoutVerified:
+                                        true,
+
+                                    confidence:
+                                        "approximate-current-rate",
+                                },
+                            });
+
+                    comparisonPrincipal =
+                        activeEstimate
+                            .principal
+                            .value;
+
+                    principalSource =
+                        "estimated-active-principal";
+
+                    principalEstimated =
+                        true;
+                } catch (error) {
+                    metrics
+                        .bankRecommendationFailures +=
+                        1;
+
+                    metrics.lastError =
+                        createErrorSnapshot(
+                            error
+                        );
+                }
+            }
+        }
+
+        let comparison =
+            null;
+
+        let recommendation =
+            null;
+
+        if (
+            comparisonPrincipal >
+                0 &&
+            options.length >
+                0
+        ) {
+            try {
+                metrics
+                    .bankRecommendationCalculations +=
+                    1;
+
+                metrics.lastRecommendationAt =
+                    Date.now();
+
+                comparison =
+                    financeEngine
+                        .compareInvestments(
+                            comparisonPrincipal,
+                            options,
+                            {
+                                principalSource,
+
+                                principalEstimated,
+                            }
+                        );
+
+                recommendation =
+                    financeEngine
+                        .recommendInvestment(
+                            comparisonPrincipal,
+                            options,
+                            {
+                                strategy:
+                                    repositoryState
+                                        .investmentStrategy,
+
+                                principalSource,
+
+                                principalEstimated,
+                            }
+                        );
+            } catch (error) {
+                metrics
+                    .bankRecommendationFailures +=
+                    1;
+
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+            }
+        }
+
+        return {
+            comparisonPrincipal: {
+                value:
+                    comparisonPrincipal,
+
+                source:
+                    principalSource,
+
+                estimated:
+                    principalEstimated,
+
+                verified:
+                    !principalEstimated,
+            },
+
+            activeEstimate,
+
+            comparison,
+
+            recommendation,
+
+            calculatedAt:
+                Date.now(),
+        };
+    }
+
+    function createUnavailableBankSnapshot(
+        reason
+    ) {
+        return {
+            type:
+                DATA_KEYS
+                    .INVESTMENT_BANK,
 
             available:
                 false,
 
-            source,
-
-            elementFound:
+            ready:
                 false,
 
-            previousWallet:
+            reason,
+
+            strategy:
                 repositoryState
-                    .wallet,
-        });
+                    .investmentStrategy,
+
+            pageSnapshot:
+                null,
+
+            options:
+                [],
+
+            activeInvestment:
+                null,
+
+            analysis:
+                null,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
     }
 
-    function reportRepositoryError({
-        code,
-        message,
-        details = {},
-        error = null,
-        severity =
-            SEVERITY.WARNING,
-        recoverable = true,
-        retryable = true,
-        recovery = null,
-    }) {
-        metrics.lastErrorAt =
-            Date.now();
+    function createBankSnapshot(
+        helperSnapshot,
+        reason
+    ) {
+        const analysis =
+            calculateBankAnalysis(
+                helperSnapshot
+            );
 
-        errors?.report({
-            code,
+        return {
+            type:
+                DATA_KEYS
+                    .INVESTMENT_BANK,
 
-            severity,
+            available:
+                helperSnapshot
+                    ?.ready ===
+                true,
 
-            service:
-                "finance-repository",
+            ready:
+                helperSnapshot
+                    ?.ready ===
+                true,
 
-            message,
+            reason,
 
-            details,
+            strategy:
+                repositoryState
+                    .investmentStrategy,
 
-            error,
+            pageSnapshot:
+                cloneValue(
+                    helperSnapshot
+                ),
 
-            recoverable,
+            options:
+                (
+                    helperSnapshot
+                        ?.options ||
+                    []
+                )
+                    .map(
+                        normalizeBankOption
+                    )
+                    .filter(
+                        Boolean
+                    ),
 
-            retryable,
+            activeInvestment:
+                cloneValue(
+                    helperSnapshot
+                        ?.currentInvestment ||
+                    null
+                ),
 
-            recovery,
-        });
+            controls:
+                cloneValue(
+                    helperSnapshot
+                        ?.controls ||
+                    null
+                ),
+
+            state:
+                cloneValue(
+                    helperSnapshot
+                        ?.state ||
+                    null
+                ),
+
+            analysis,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
     }
 
-    function publishWalletState(
-        wallet,
+    function bankSnapshotsEqual(
+        first,
+        second
+    ) {
+        if (
+            !first ||
+            !second
+        ) {
+            return false;
+        }
+
+        const simplify =
+            snapshot => ({
+                available:
+                    snapshot.available,
+
+                strategy:
+                    snapshot.strategy,
+
+                options:
+                    snapshot.options.map(
+                        option => ({
+                            id:
+                                option.id,
+
+                            days:
+                                option.days,
+
+                            profitPercent:
+                                option
+                                    .profitPercent,
+
+                            aprPercent:
+                                option
+                                    .aprPercent,
+
+                            selected:
+                                option.selected,
+                        })
+                    ),
+
+                active:
+                    snapshot
+                        .activeInvestment
+                        ?.active ===
+                    true,
+
+                payout:
+                    snapshot
+                        .activeInvestment
+                        ?.payout
+                        ?.value ??
+                    null,
+
+                selectedTerm:
+                    snapshot
+                        .activeInvestment
+                        ?.selectedTerm
+                        ?.id ||
+                    null,
+
+                /*
+                 * Compare maturity rounded to one minute so the
+                 * live second-by-second countdown does not cause
+                 * constant repository change events.
+                 */
+                maturityMinute:
+                    Number.isFinite(
+                        snapshot
+                            .activeInvestment
+                            ?.countdown
+                            ?.estimatedMaturesAt
+                    )
+                        ? Math.round(
+                              snapshot
+                                  .activeInvestment
+                                  .countdown
+                                  .estimatedMaturesAt /
+                                  60_000
+                          )
+                        : null,
+
+                recommendation:
+                    snapshot
+                        .analysis
+                        ?.recommendation
+                        ?.recommendation
+                        ?.option
+                        ?.id ||
+                    null,
+            });
+
+        return (
+            JSON.stringify(
+                simplify(
+                    first
+                )
+            ) ===
+            JSON.stringify(
+                simplify(
+                    second
+                )
+            )
+        );
+    }
+
+    function publishState(
+        stateKey,
+        value,
         reason,
-        options = {}
+        force =
+            false
     ) {
         metrics.statePublishes +=
             1;
 
-        metrics.lastStatePublishAt =
-            Date.now();
-
         try {
-            const result =
-                sharedState.set(
-                    STATE_KEYS.WALLET,
-                    wallet,
-                    {
-                        source:
-                            "repository:finance",
+            return sharedState.set(
+                stateKey,
+                value,
+                {
+                    source:
+                        REPOSITORY_NAME,
 
-                        force:
-                            options.force ===
-                            true,
+                    force,
 
-                        metadata: {
-                            repository:
-                                "finance",
+                    metadata: {
+                        repository:
+                            "finance",
 
-                            dataKey:
-                                DATA_KEYS.WALLET,
-
-                            reason,
-
-                            available:
-                                wallet
-                                    ?.available ===
-                                true,
-
-                            value:
-                                wallet
-                                    ?.value ??
-                                null,
-
-                            previousValue:
-                                wallet
-                                    ?.previousValue ??
-                                null,
-
-                            delta:
-                                wallet
-                                    ?.delta ??
-                                null,
-
-                            direction:
-                                wallet
-                                    ?.direction ??
-                                null,
-                        },
-                    }
-                );
-
-            if (
-                result.changed ===
-                true
-            ) {
-                metrics
-                    .statePublishChanges +=
-                    1;
-            } else {
-                metrics
-                    .statePublishNoChanges +=
-                    1;
-            }
-
-            return result;
+                        reason,
+                    },
+                }
+            );
         } catch (error) {
-            metrics
-                .statePublishFailures +=
+            metrics.statePublishFailures +=
                 1;
 
-            reportRepositoryError({
-                code:
-                    ERROR_CODES
-                        .GENERAL
-                        .INTERNAL,
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
 
-                severity:
-                    SEVERITY.ERROR,
-
-                message:
-                    "Finance Repository could not publish the wallet to shared State.",
-
-                details: {
-                    stateKey:
-                        STATE_KEYS.WALLET,
-
+            logger?.error(
+                "Finance Repository state publish failed",
+                {
+                    stateKey,
                     reason,
-
-                    wallet:
-                        cloneValue(
-                            wallet
-                        ),
-                },
-
-                error,
-
-                recoverable:
-                    true,
-
-                retryable:
-                    true,
-
-                recovery:
-                    "Verify that the State service is loaded before the Finance Repository.",
-            });
+                    error,
+                }
+            );
 
             return {
                 changed:
@@ -727,16 +1127,6 @@
 
                 failed:
                     true,
-
-                error: {
-                    name:
-                        error?.name ||
-                        "Error",
-
-                    message:
-                        error?.message ||
-                        String(error),
-                },
             };
         }
     }
@@ -794,106 +1184,40 @@
                     )
                 );
 
-                notified +=
-                    1;
-
                 metrics
                     .subscriberNotifications +=
+                    1;
+
+                notified +=
                     1;
             } catch (error) {
                 metrics.subscriberErrors +=
                     1;
 
-                reportRepositoryError({
-                    code:
-                        ERROR_CODES
-                            .GENERAL
-                            .INTERNAL,
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
 
-                    severity:
-                        SEVERITY.ERROR,
-
-                    message:
-                        `Finance Repository subscriber for "${dataKey}" failed.`,
-
-                    details: {
+                logger?.error(
+                    "Finance Repository subscriber failed",
+                    {
                         dataKey,
                         reason,
-                    },
-
-                    error,
-
-                    recoverable:
-                        true,
-
-                    retryable:
-                        false,
-
-                    recovery:
-                        "Correct or remove the failing subscriber callback.",
-                });
+                        error,
+                    }
+                );
             }
         }
 
         return notified;
     }
 
-    function emitWalletChanged(
-        wallet,
-        previousWallet,
-        reason
-    ) {
-        events?.emit(
-            EVENT_NAMES.WALLET_CHANGED,
-            {
-                wallet:
-                    cloneValue(
-                        wallet
-                    ),
-
-                previousWallet:
-                    cloneValue(
-                        previousWallet
-                    ),
-
-                value:
-                    wallet
-                        ?.value ??
-                    null,
-
-                previousValue:
-                    wallet
-                        ?.previousValue ??
-                    null,
-
-                delta:
-                    wallet
-                        ?.delta ??
-                    0,
-
-                direction:
-                    wallet
-                        ?.direction ??
-                    "unchanged",
-
-                reason,
-
-                repository:
-                    "finance",
-
-                stateKey:
-                    STATE_KEYS.WALLET,
-
-                timestamp:
-                    Date.now(),
-            }
-        );
-    }
-
     function updateWalletState(
         wallet,
         reason,
-        options = {}
+        forceNotify =
+            false
     ) {
         const previousWallet =
             repositoryState.wallet;
@@ -907,52 +1231,27 @@
         repositoryState.wallet =
             wallet;
 
-        const stateResult =
-            publishWalletState(
-                wallet,
-                reason,
-                {
-                    force:
-                        options.forceStateNotify ===
-                        true,
-                }
-            );
+        publishState(
+            STATE_KEYS.WALLET,
+            wallet,
+            reason,
+            forceNotify
+        );
 
         if (
             !changed &&
-            options.forceNotify !==
-                true
+            !forceNotify
         ) {
-            metrics.walletNoChange +=
+            metrics.walletNoChanges +=
                 1;
-
-            recordActivity(
-                "wallet-unchanged",
-                {
-                    reason,
-
-                    stateChanged:
-                        stateResult.changed ===
-                        true,
-                }
-            );
 
             return {
                 changed:
                     false,
 
-                stateChanged:
-                    stateResult.changed ===
-                    true,
-
                 wallet:
                     cloneValue(
                         wallet
-                    ),
-
-                previousWallet:
-                    cloneValue(
-                        previousWallet
                     ),
             };
         }
@@ -963,24 +1262,6 @@
         metrics.lastWalletChangeAt =
             Date.now();
 
-        if (
-            wallet.delta > 0
-        ) {
-            metrics.walletIncreases +=
-                1;
-
-            metrics.lastWalletIncreaseAt =
-                Date.now();
-        } else if (
-            wallet.delta < 0
-        ) {
-            metrics.walletDecreases +=
-                1;
-
-            metrics.lastWalletDecreaseAt =
-                Date.now();
-        }
-
         notifySubscribers(
             DATA_KEYS.WALLET,
             wallet,
@@ -988,32 +1269,34 @@
             reason
         );
 
-        emitWalletChanged(
-            wallet,
-            previousWallet,
-            reason
+        events?.emit?.(
+            EVENT_NAMES.WALLET_CHANGED,
+            {
+                wallet:
+                    cloneValue(
+                        wallet
+                    ),
+
+                previousWallet:
+                    cloneValue(
+                        previousWallet
+                    ),
+
+                reason,
+
+                timestamp:
+                    Date.now(),
+            }
         );
 
         recordActivity(
             "wallet-changed",
             {
-                reason,
-
-                walletValue:
+                value:
                     wallet.value,
 
-                walletPreviousValue:
-                    wallet.previousValue,
-
-                walletDelta:
+                delta:
                     wallet.delta,
-
-                walletDirection:
-                    wallet.direction,
-
-                stateChanged:
-                    stateResult.changed ===
-                    true,
             }
         );
 
@@ -1021,18 +1304,128 @@
             changed:
                 true,
 
-            stateChanged:
-                stateResult.changed ===
-                true,
-
             wallet:
                 cloneValue(
                     wallet
                 ),
+        };
+    }
 
-            previousWallet:
+    function updateBankState(
+        bank,
+        reason,
+        forceNotify =
+            false
+    ) {
+        const previousBank =
+            repositoryState
+                .investmentBank;
+
+        const changed =
+            !bankSnapshotsEqual(
+                previousBank,
+                bank
+            );
+
+        repositoryState
+            .investmentBank =
+            bank;
+
+        publishState(
+            STATE_KEYS
+                .INVESTMENT_BANK,
+            bank,
+            reason,
+            forceNotify
+        );
+
+        if (
+            !changed &&
+            !forceNotify
+        ) {
+            metrics.bankNoChanges +=
+                1;
+
+            return {
+                changed:
+                    false,
+
+                investmentBank:
+                    cloneValue(
+                        bank
+                    ),
+            };
+        }
+
+        metrics.bankChanges +=
+            1;
+
+        metrics.lastBankChangeAt =
+            Date.now();
+
+        notifySubscribers(
+            DATA_KEYS
+                .INVESTMENT_BANK,
+            bank,
+            previousBank,
+            reason
+        );
+
+        events?.emit?.(
+            EVENT_NAMES
+                .INVESTMENT_BANK_CHANGED,
+            {
+                investmentBank:
+                    cloneValue(
+                        bank
+                    ),
+
+                previousInvestmentBank:
+                    cloneValue(
+                        previousBank
+                    ),
+
+                reason,
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        recordActivity(
+            "investment-bank-changed",
+            {
+                available:
+                    bank.available,
+
+                optionCount:
+                    bank.options
+                        .length,
+
+                activeInvestment:
+                    bank
+                        .activeInvestment
+                        ?.active ===
+                    true,
+
+                recommendation:
+                    bank
+                        .analysis
+                        ?.recommendation
+                        ?.recommendation
+                        ?.option
+                        ?.id ||
+                    null,
+            }
+        );
+
+        return {
+            changed:
+                true,
+
+            investmentBank:
                 cloneValue(
-                    previousWallet
+                    bank
                 ),
         };
     }
@@ -1056,103 +1449,37 @@
             );
 
         if (!element) {
-            metrics.unavailableReads +=
-                1;
-
-            const unavailable =
-                createUnavailableWallet(
-                    source
-                );
-
-            recordActivity(
-                "wallet-unavailable",
-                {
-                    selector,
-                }
-            );
-
-            return unavailable;
-        }
-
-        const raw =
-            String(
-                element.textContent ??
-                ""
-            ).trim();
-
-        const value =
-            parseWalletValue(
-                raw
-            );
-
-        if (
-            !Number.isFinite(
-                value
-            )
-        ) {
-            metrics.parseFailures +=
-                1;
-
-            reportRepositoryError({
-                code:
-                    ERROR_CODES
-                        .DOM
-                        .PARSE_FAILED,
-
-                message:
-                    "Finance Repository could not parse the wallet value.",
-
-                details: {
-                    selector,
-                    raw,
-                },
-
-                recoverable:
-                    true,
-
-                retryable:
-                    true,
-
-                recovery:
-                    "Wait for Torn to render a valid wallet value or update the wallet parser.",
-            });
-
             return createWalletSnapshot({
-                raw,
+                raw:
+                    "",
 
                 value:
                     null,
 
-                available:
-                    false,
-
                 source,
 
                 elementFound:
-                    true,
-
-                previousWallet:
-                    repositoryState
-                        .wallet,
+                    false,
             });
         }
+
+        const raw =
+            normalizeText(
+                element.textContent
+            );
 
         return createWalletSnapshot({
             raw,
 
-            value,
-
-            available:
-                true,
+            value:
+                parseWalletValue(
+                    raw
+                ),
 
             source,
 
             elementFound:
                 true,
-
-            previousWallet:
-                repositoryState
-                    .wallet,
         });
     }
 
@@ -1192,38 +1519,289 @@
         updateWalletState(
             wallet,
             reason,
-            options
+            options.forceNotify ===
+                true
         );
+
+        /*
+         * A wallet change can alter the amount used by current
+         * Investment Bank recommendations.
+         */
+        if (
+            repositoryState
+                .investmentBank
+                ?.available ===
+            true
+        ) {
+            scheduleInvestmentBankRefresh(
+                "wallet-changed"
+            );
+        }
 
         return cloneValue(
             wallet
         );
     }
 
-    function validateDataKey(
-        dataKey
+    function readInvestmentBank(
+        reason =
+            "manual-read"
+    ) {
+        metrics.bankReads +=
+            1;
+
+        metrics.lastBankReadAt =
+            Date.now();
+
+        const helper =
+            getBankHelper();
+
+        if (
+            !helper ||
+            typeof helper.getSnapshot !==
+                "function"
+        ) {
+            metrics.bankUnavailableReads +=
+                1;
+
+            return createUnavailableBankSnapshot(
+                "investment-bank-helper-unavailable"
+            );
+        }
+
+        try {
+            const helperSnapshot =
+                helper.getSnapshot();
+
+            return createBankSnapshot(
+                helperSnapshot,
+                reason
+            );
+        } catch (error) {
+            metrics.bankUnavailableReads +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Investment Bank",
+                {
+                    error,
+                    reason,
+                }
+            );
+
+            return createUnavailableBankSnapshot(
+                "investment-bank-read-failed"
+            );
+        }
+    }
+
+    function getInvestmentBank(
+        options = {}
+    ) {
+        if (
+            options.refresh ===
+                true ||
+            repositoryState
+                .investmentBank ===
+                null
+        ) {
+            refreshInvestmentBank(
+                options.reason ||
+                "get-investment-bank"
+            );
+        }
+
+        return cloneValue(
+            repositoryState
+                .investmentBank
+        );
+    }
+
+    function refreshInvestmentBank(
+        reason =
+            "manual-refresh",
+        options = {}
+    ) {
+        metrics.bankRefreshes +=
+            1;
+
+        const bank =
+            readInvestmentBank(
+                reason
+            );
+
+        updateBankState(
+            bank,
+            reason,
+            options.forceNotify ===
+                true
+        );
+
+        return cloneValue(
+            bank
+        );
+    }
+
+    function scheduleInvestmentBankRefresh(
+        reason =
+            "bank-dom-change"
+    ) {
+        if (
+            bankRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                bankRefreshTimerId
+            );
+        }
+
+        bankRefreshTimerId =
+            globalThis.setTimeout(
+                () => {
+                    bankRefreshTimerId =
+                        null;
+
+                    refreshInvestmentBank(
+                        reason
+                    );
+                },
+                BANK_REFRESH_DEBOUNCE_MS
+            );
+
+        return true;
+    }
+
+    function getInvestmentStrategy() {
+        return repositoryState
+            .investmentStrategy;
+    }
+
+    function setInvestmentStrategy(
+        strategy,
+        options = {}
     ) {
         const normalized =
             String(
-                dataKey ||
+                strategy ||
                 ""
             )
                 .trim()
                 .toLowerCase();
 
+        const validStrategies =
+            Object.values(
+                financeEngine
+                    .strategies ||
+                {}
+            );
+
         if (
-            !Object.values(
-                DATA_KEYS
-            ).includes(
+            !validStrategies.includes(
                 normalized
             )
         ) {
             throw new Error(
-                `Unsupported Finance Repository data key: ${String(dataKey)}`
+                `Unsupported investment strategy: ${String(strategy)}`
             );
         }
 
-        return normalized;
+        const previousStrategy =
+            repositoryState
+                .investmentStrategy;
+
+        if (
+            previousStrategy ===
+            normalized
+        ) {
+            return {
+                success:
+                    true,
+
+                changed:
+                    false,
+
+                strategy:
+                    normalized,
+            };
+        }
+
+        repositoryState
+            .investmentStrategy =
+            normalized;
+
+        metrics.strategyChanges +=
+            1;
+
+        metrics.lastStrategyChangeAt =
+            Date.now();
+
+        events?.emit?.(
+            EVENT_NAMES
+                .INVESTMENT_STRATEGY_CHANGED,
+            {
+                previousStrategy,
+
+                strategy:
+                    normalized,
+
+                source:
+                    options.source ||
+                    "finance-repository",
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        refreshInvestmentBank(
+            "investment-strategy-changed",
+            {
+                forceNotify:
+                    true,
+            }
+        );
+
+        return {
+            success:
+                true,
+
+            changed:
+                true,
+
+            previousStrategy,
+
+            strategy:
+                normalized,
+        };
+    }
+
+    function normalizeDataKey(
+        dataKey
+    ) {
+        const value =
+            String(
+                dataKey ||
+                ""
+            ).trim();
+
+        if (
+            value ===
+                DATA_KEYS.WALLET ||
+            value ===
+                DATA_KEYS
+                    .INVESTMENT_BANK
+        ) {
+            return value;
+        }
+
+        throw new Error(
+            `Unsupported Finance Repository data key: ${String(dataKey)}`
+        );
     }
 
     function subscribe(
@@ -1232,7 +1810,7 @@
         options = {}
     ) {
         const normalizedKey =
-            validateDataKey(
+            normalizeDataKey(
                 dataKey
             );
 
@@ -1254,20 +1832,6 @@
             callback
         );
 
-        metrics.subscriptionCount +=
-            1;
-
-        recordActivity(
-            "subscribe",
-            {
-                dataKey:
-                    normalizedKey,
-
-                subscriberCount:
-                    targetSubscribers.size,
-            }
-        );
-
         if (
             options.emitInitial ===
             true
@@ -1279,67 +1843,34 @@
                           refresh:
                               options.refresh ===
                               true,
-
-                          reason:
-                              "subscription-initial",
                       })
-                    : null;
+                    : getInvestmentBank({
+                          refresh:
+                              options.refresh ===
+                              true,
+                      });
 
-            try {
-                callback({
-                    key:
-                        normalizedKey,
+            callback({
+                key:
+                    normalizedKey,
 
-                    value:
-                        cloneValue(
-                            value
-                        ),
+                value:
+                    cloneValue(
+                        value
+                    ),
 
-                    previousValue:
-                        null,
+                previousValue:
+                    null,
 
-                    reason:
-                        "subscription-initial",
+                reason:
+                    "subscription-initial",
 
-                    initial:
-                        true,
+                initial:
+                    true,
 
-                    timestamp:
-                        Date.now(),
-                });
-            } catch (error) {
-                metrics.subscriberErrors +=
-                    1;
-
-                reportRepositoryError({
-                    code:
-                        ERROR_CODES
-                            .GENERAL
-                            .INTERNAL,
-
-                    severity:
-                        SEVERITY.ERROR,
-
-                    message:
-                        `Initial Finance Repository subscriber callback for "${normalizedKey}" failed.`,
-
-                    details: {
-                        dataKey:
-                            normalizedKey,
-                    },
-
-                    error,
-
-                    recoverable:
-                        true,
-
-                    retryable:
-                        false,
-
-                    recovery:
-                        "Correct or remove the failing subscriber callback.",
-                });
-            }
+                timestamp:
+                    Date.now(),
+            });
         }
 
         return () =>
@@ -1354,46 +1885,18 @@
         callback
     ) {
         const normalizedKey =
-            validateDataKey(
+            normalizeDataKey(
                 dataKey
             );
 
-        const targetSubscribers =
-            subscribers.get(
+        return subscribers
+            .get(
                 normalizedKey
-            );
-
-        if (
-            !targetSubscribers ||
-            !targetSubscribers.has(
-                callback
             )
-        ) {
-            return false;
-        }
-
-        const removed =
-            targetSubscribers.delete(
+            ?.delete(
                 callback
-            );
-
-        if (removed) {
-            metrics.unsubscriptionCount +=
-                1;
-
-            recordActivity(
-                "unsubscribe",
-                {
-                    dataKey:
-                        normalizedKey,
-
-                    subscriberCount:
-                        targetSubscribers.size,
-                }
-            );
-        }
-
-        return removed;
+            ) ===
+            true;
     }
 
     async function startWalletWatcher() {
@@ -1417,11 +1920,6 @@
 
                             value,
 
-                            available:
-                                Number.isFinite(
-                                    value
-                                ),
-
                             source:
                                 initial
                                     ? "watcher-initial"
@@ -1429,10 +1927,6 @@
 
                             elementFound:
                                 true,
-
-                            previousWallet:
-                                repositoryState
-                                    .wallet,
                         });
 
                     updateWalletState(
@@ -1441,10 +1935,21 @@
                             ? "watcher-initial"
                             : "watcher-change"
                     );
+
+                    if (
+                        repositoryState
+                            .investmentBank
+                            ?.available ===
+                        true
+                    ) {
+                        scheduleInvestmentBankRefresh(
+                            "wallet-watcher-change"
+                        );
+                    }
                 },
                 {
                     group:
-                        OBSERVER_GROUP,
+                        WALLET_OBSERVER_GROUP,
 
                     emitInitial:
                         true,
@@ -1467,9 +1972,6 @@
 
                         dataKey:
                             DATA_KEYS.WALLET,
-
-                        stateKey:
-                            STATE_KEYS.WALLET,
                     },
                 }
             );
@@ -1478,36 +1980,83 @@
                 WALLET_OBSERVER_NAME
             );
         } catch (error) {
-            reportRepositoryError({
-                code:
-                    ERROR_CODES
-                        .DOM
-                        .OBSERVER_FAILED,
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
 
-                message:
-                    "Finance Repository could not start the wallet watcher.",
-
-                details: {
-                    observerName:
-                        WALLET_OBSERVER_NAME,
-
-                    selector,
-                },
-
-                error,
-
-                recoverable:
-                    true,
-
-                retryable:
-                    true,
-
-                recovery:
-                    "Retry after Torn finishes loading the wallet display.",
-            });
+            logger?.error(
+                "Finance Repository wallet watcher failed",
+                {
+                    error,
+                }
+            );
 
             return false;
         }
+    }
+
+    function startInvestmentBankWatcher() {
+        if (
+            bankMutationObserver
+        ) {
+            bankMutationObserver
+                .disconnect();
+
+            bankMutationObserver =
+                null;
+        }
+
+        const bankRoot =
+            document.querySelector(
+                ".invest-wrap"
+            );
+
+        if (!bankRoot) {
+            refreshInvestmentBank(
+                "bank-watcher-root-unavailable"
+            );
+
+            return false;
+        }
+
+        bankMutationObserver =
+            new MutationObserver(
+                () => {
+                    scheduleInvestmentBankRefresh(
+                        "bank-dom-mutation"
+                    );
+                }
+            );
+
+        bankMutationObserver.observe(
+            bankRoot,
+            {
+                childList:
+                    true,
+
+                subtree:
+                    true,
+
+                characterData:
+                    true,
+
+                attributes:
+                    true,
+
+                attributeFilter: [
+                    "class",
+                    "disabled",
+                    "value",
+                ],
+            }
+        );
+
+        refreshInvestmentBank(
+            "bank-watcher-initial"
+        );
+
+        return true;
     }
 
     async function start() {
@@ -1529,84 +2078,41 @@
         metrics.startCount +=
             1;
 
-        health?.markHealthy(
+        const walletWatcherActive =
+            await startWalletWatcher();
+
+        const bankWatcherActive =
+            startInvestmentBankWatcher();
+
+        health?.markHealthy?.(
             REPOSITORY_NAME,
             {
                 message:
-                    "Finance Repository is starting.",
+                    "Finance Repository is active.",
 
                 metadata: {
-                    started:
-                        true,
+                    walletWatcherActive,
 
-                    stateKey:
-                        STATE_KEYS.WALLET,
+                    bankWatcherActive,
                 },
             }
         );
 
-        const watcherStarted =
-            await startWalletWatcher();
-
-        if (!watcherStarted) {
-            health?.markDegraded(
-                REPOSITORY_NAME,
-                {
-                    score:
-                        80,
-
-                    message:
-                        "Finance Repository started without an active wallet watcher.",
-
-                    metadata: {
-                        started:
-                            true,
-
-                        walletWatcherActive:
-                            false,
-
-                        stateKey:
-                            STATE_KEYS.WALLET,
-                    },
-                }
-            );
-        } else {
-            health?.markHealthy(
-                REPOSITORY_NAME,
-                {
-                    message:
-                        "Finance Repository is active.",
-
-                    metadata: {
-                        started:
-                            true,
-
-                        walletWatcherActive:
-                            true,
-
-                        stateKey:
-                            STATE_KEYS.WALLET,
-                    },
-                }
-            );
-        }
-
         recordActivity(
             "start",
             {
-                walletWatcherActive:
-                    watcherStarted,
+                walletWatcherActive,
+
+                bankWatcherActive,
             }
         );
 
         logger?.info(
             "Finance Repository started",
             {
-                walletWatcherActive:
-                    watcherStarted,
+                walletWatcherActive,
 
-                stateKey:
-                    STATE_KEYS.WALLET,
+                bankWatcherActive,
             }
         );
 
@@ -1620,9 +2126,31 @@
             return false;
         }
 
-        dom.disconnectGroup(
-            OBSERVER_GROUP
+        dom.disconnectGroup?.(
+            WALLET_OBSERVER_GROUP
         );
+
+        if (
+            bankMutationObserver
+        ) {
+            bankMutationObserver
+                .disconnect();
+
+            bankMutationObserver =
+                null;
+        }
+
+        if (
+            bankRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                bankRefreshTimerId
+            );
+
+            bankRefreshTimerId =
+                null;
+        }
 
         repositoryState.started =
             false;
@@ -1633,27 +2161,12 @@
         metrics.stopCount +=
             1;
 
-        health?.markDisabled(
+        health?.markDisabled?.(
             REPOSITORY_NAME,
             {
                 message:
                     "Finance Repository is stopped.",
-
-                metadata: {
-                    started:
-                        false,
-
-                    walletWatcherActive:
-                        false,
-
-                    stateKey:
-                        STATE_KEYS.WALLET,
-                },
             }
-        );
-
-        recordActivity(
-            "stop"
         );
 
         logger?.info(
@@ -1675,6 +2188,13 @@
             )?.size ||
             0;
 
+        const bankSubscribers =
+            subscribers.get(
+                DATA_KEYS
+                    .INVESTMENT_BANK
+            )?.size ||
+            0;
+
         return {
             repository:
                 "finance",
@@ -1693,14 +2213,13 @@
 
             uptimeMs:
                 repositoryState
-                    .startedAt ===
-                    null ||
-                !repositoryState
+                    .startedAt &&
+                repositoryState
                     .started
-                    ? 0
-                    : Date.now() -
+                    ? Date.now() -
                       repositoryState
-                          .startedAt,
+                          .startedAt
+                    : 0,
 
             wallet:
                 cloneValue(
@@ -1708,51 +2227,120 @@
                         .wallet
                 ),
 
-            sharedState: {
-                key:
-                    STATE_KEYS.WALLET,
+            investmentBank:
+                cloneValue(
+                    repositoryState
+                        .investmentBank
+                ),
 
-                published:
-                    sharedState.has(
-                        STATE_KEYS.WALLET
+            investmentStrategy:
+                repositoryState
+                    .investmentStrategy,
+
+            helper: {
+                id:
+                    BANK_HELPER_ID,
+
+                available:
+                    Boolean(
+                        getBankHelper()
                     ),
 
-                value:
-                    sharedState.get(
-                        STATE_KEYS.WALLET,
-                        null
-                    ),
-
-                revision:
-                    sharedState
-                        .getRevision(
-                            STATE_KEYS.WALLET
-                        ),
+                ready:
+                    getBankHelper()
+                        ?.isReady?.()
+                        ?.ready ===
+                    true,
             },
 
-            walletWatcher: {
-                name:
-                    WALLET_OBSERVER_NAME,
+            watchers: {
+                wallet: {
+                    name:
+                        WALLET_OBSERVER_NAME,
 
-                active:
-                    dom.hasObserver(
-                        WALLET_OBSERVER_NAME
-                    ),
+                    active:
+                        dom.hasObserver(
+                            WALLET_OBSERVER_NAME
+                        ),
 
-                selector:
-                    getWalletSelector(),
+                    selector:
+                        getWalletSelector(),
+                },
+
+                investmentBank: {
+                    active:
+                        Boolean(
+                            bankMutationObserver
+                        ),
+
+                    rootPresent:
+                        Boolean(
+                            document.querySelector(
+                                ".invest-wrap"
+                            )
+                        ),
+                },
+            },
+
+            sharedState: {
+                wallet: {
+                    key:
+                        STATE_KEYS.WALLET,
+
+                    published:
+                        sharedState.has(
+                            STATE_KEYS.WALLET
+                        ),
+
+                    revision:
+                        sharedState
+                            .getRevision(
+                                STATE_KEYS.WALLET
+                            ),
+                },
+
+                investmentBank: {
+                    key:
+                        STATE_KEYS
+                            .INVESTMENT_BANK,
+
+                    published:
+                        sharedState.has(
+                            STATE_KEYS
+                                .INVESTMENT_BANK
+                        ),
+
+                    revision:
+                        sharedState
+                            .getRevision(
+                                STATE_KEYS
+                                    .INVESTMENT_BANK
+                            ),
+                },
             },
 
             subscribers: {
                 wallet:
                     walletSubscribers,
 
+                investmentBank:
+                    bankSubscribers,
+
                 total:
-                    walletSubscribers,
+                    walletSubscribers +
+                    bankSubscribers,
             },
 
             metrics: {
                 ...metrics,
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
+                        : null,
             },
 
             dataKeys: {
@@ -1773,6 +2361,12 @@
         Object.freeze({
             getWallet,
             refreshWallet,
+
+            getInvestmentBank,
+            refreshInvestmentBank,
+
+            getInvestmentStrategy,
+            setInvestmentStrategy,
 
             subscribe,
             unsubscribe,
@@ -1796,56 +2390,53 @@
     TACTIC.repositories.finance =
         financeRepository;
 
-    health?.register({
+    health?.register?.({
         name:
             REPOSITORY_NAME,
 
         type:
-            health.types.REPOSITORY,
+            health.types
+                ?.REPOSITORY ||
+            "repository",
 
         status:
-            HEALTH_STATES.STARTING,
+            TACTIC
+                .HEALTH_STATES
+                ?.STARTING ||
+            "starting",
 
         staleAfterMs:
-            300_000,
+            null,
 
         metadata: {
             repositoryName:
                 "finance",
 
-            dataKeys: [
-                DATA_KEYS.WALLET,
-            ],
+            dataKeys:
+                Object.values(
+                    DATA_KEYS
+                ),
 
-            stateKeys: [
-                STATE_KEYS.WALLET,
-            ],
-
-            eventNames: [
-                EVENT_NAMES
-                    .WALLET_CHANGED,
-            ],
+            stateKeys:
+                Object.values(
+                    STATE_KEYS
+                ),
 
             requiresHeartbeat:
-                false,
-
-            started:
                 false,
         },
     });
 
     start().catch(
         error => {
-            health?.markFailed(
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            health?.markFailed?.(
                 REPOSITORY_NAME,
                 {
-                    status:
-                        HEALTH_STATES
-                            .UNHEALTHY,
-
-                    score:
-                        25,
-
                     message:
                         error.message,
 
@@ -1853,41 +2444,26 @@
                 }
             );
 
-            reportRepositoryError({
-                code:
-                    ERROR_CODES
-                        .GENERAL
-                        .INTERNAL,
-
-                severity:
-                    SEVERITY.ERROR,
-
-                message:
-                    "Finance Repository startup failed.",
-
-                error,
-
-                recoverable:
-                    true,
-
-                retryable:
-                    true,
-
-                recovery:
-                    "Retry Finance Repository startup after Torn finishes loading.",
-            });
+            logger?.error(
+                "Finance Repository startup failed",
+                {
+                    error,
+                }
+            );
         }
     );
 
     logger?.info(
         "Finance Repository loaded",
         {
-            stateKey:
-                STATE_KEYS.WALLET,
+            domains: [
+                DATA_KEYS.WALLET,
+                DATA_KEYS
+                    .INVESTMENT_BANK,
+            ],
 
-            eventName:
-                EVENT_NAMES
-                    .WALLET_CHANGED,
+            defaultInvestmentStrategy:
+                DEFAULT_STRATEGY,
         }
     );
 })();
