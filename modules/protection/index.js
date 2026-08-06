@@ -77,6 +77,9 @@
     const ACTION_ID =
         "deposit.prepare";
 
+    const AUTO_DEPOSIT_FEATURE_ID =
+        "protection.autoDeposit";
+
     if (
         typeof TACTIC.use !==
         "function"
@@ -103,6 +106,7 @@
                 "health",
                 "user",
                 "protection",
+                "developer",
             ]);
     } catch (error) {
         console.error(
@@ -127,6 +131,7 @@
             userRepository,
 
         protection,
+        developer,
     } = dependencies;
 
     const settings =
@@ -163,6 +168,9 @@
 
     let removeSettingsListener =
         null;
+
+    const removeDeveloperListeners =
+        [];
 
     let latestWallet =
         userRepository.getWallet();
@@ -1475,8 +1483,8 @@
                 "Destination",
                 destination
                     ?.name ||
-                    evaluation
-                        .destination,
+                evaluation
+                    .destination,
                 {
                     large:
                         false,
@@ -1533,7 +1541,7 @@
                 }
             );
 
-        controls.append(
+        const prepareButton =
             createButton(
                 preparationInProgress
                     ? "Preparing Deposit…"
@@ -1546,8 +1554,9 @@
                     disabled:
                         prepareDisabled,
                 }
-            ),
+            );
 
+        const protectionButton =
             createButton(
                 configuration.enabled
                     ? "Disable Protection"
@@ -1580,8 +1589,9 @@
                         }
                     );
                 }
-            ),
+            );
 
+        const refreshButton =
             createButton(
                 "Refresh Wallet",
                 () => {
@@ -1594,7 +1604,86 @@
                     evaluate();
                     refreshIfActive();
                 }
-            )
+            );
+
+        controls.append(
+            prepareButton,
+            protectionButton
+        );
+
+        /*
+         * Only the authenticated developer account sees this
+         * control. Regular users retain the existing dashboard.
+         */
+        if (
+            developer?.isDeveloper?.() ===
+            true
+        ) {
+            const autoDepositState =
+                developer.getFeatureState(
+                    AUTO_DEPOSIT_FEATURE_ID
+                );
+
+            const autoDepositButton =
+                createButton(
+                    autoDepositState
+                        .storedEnabled
+                        ? "Disable Auto Deposit"
+                        : "Enable Auto Deposit",
+                    async () => {
+                        const result =
+                            developer.toggleFeature(
+                                AUTO_DEPOSIT_FEATURE_ID,
+                                {
+                                    source:
+                                        "protection-ui",
+                                }
+                            );
+
+                        if (!result.success) {
+                            notifications?.warning?.(
+                                "TACTIC could not change the Auto Deposit setting.",
+                                {
+                                    title:
+                                        "Developer Auto Deposit",
+
+                                    group:
+                                        "protection",
+                                }
+                            );
+
+                            return;
+                        }
+
+                        notifications?.info?.(
+                            result.enabled
+                                ? "Developer Auto Deposit enabled."
+                                : "Developer Auto Deposit disabled.",
+                            {
+                                title:
+                                    "Developer Auto Deposit",
+
+                                group:
+                                    "protection",
+                            }
+                        );
+
+                        await refreshIfActive();
+                    },
+                    {
+                        primary:
+                            autoDepositState
+                                .usable,
+                    }
+                );
+
+            controls.appendChild(
+                autoDepositButton
+            );
+        }
+
+        controls.appendChild(
+            refreshButton
         );
 
         const safetyNotice =
@@ -1728,6 +1817,9 @@
 
                 protection:
                     Boolean(protection),
+
+                developer:
+                    Boolean(developer),
             },
 
             initialized:
@@ -1748,6 +1840,13 @@
 
             configuration:
                 getConfiguration(),
+
+            developerAutoDeposit:
+                developer
+                    ?.getFeatureState?.(
+                        AUTO_DEPOSIT_FEATURE_ID
+                    ) ||
+                null,
 
             latestActionResult:
                 cloneValue(
@@ -1808,7 +1907,7 @@
             "🛡",
 
         version:
-            "1.1.0",
+            "1.2.0",
 
         order:
             100,
@@ -1863,6 +1962,42 @@
                         refreshIfActive();
                     }
                 );
+
+            removeDeveloperListeners.push(
+                events.on(
+                    "developer:feature-changed",
+                    ({
+                        featureId,
+                    }) => {
+                        if (
+                            featureId !==
+                            AUTO_DEPOSIT_FEATURE_ID
+                        ) {
+                            return;
+                        }
+
+                        refreshIfActive();
+                    }
+                )
+            );
+
+            removeDeveloperListeners.push(
+                events.on(
+                    "developer:changed",
+                    () => {
+                        refreshIfActive();
+                    }
+                )
+            );
+
+            removeDeveloperListeners.push(
+                events.on(
+                    "developer:identity-changed",
+                    () => {
+                        refreshIfActive();
+                    }
+                )
+            );
 
             health?.register({
                 name:
@@ -1939,6 +2074,22 @@
 
                 removeSettingsListener =
                     null;
+            }
+
+            while (
+                removeDeveloperListeners
+                    .length > 0
+            ) {
+                const removeListener =
+                    removeDeveloperListeners
+                        .pop();
+
+                if (
+                    typeof removeListener ===
+                    "function"
+                ) {
+                    removeListener();
+                }
             }
 
             logger?.info(
