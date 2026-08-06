@@ -121,7 +121,7 @@
 
 // Deposit Service requires destinations, capabilities, navigation,
 // DOM page helpers, storage, and notifications.
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=4
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=5
 
 // Register the public deposit.prepare Action.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=2

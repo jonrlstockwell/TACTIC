@@ -43,6 +43,7 @@
  * - inspect()
  *
  * Dependencies:
+ * - core/dependencies.js
  * - services/capabilities/index.js
  * - services/deposit/destinations.js
  * - services/navigation/index.js
@@ -76,38 +77,84 @@
         return;
     }
 
-    const {
-        services,
-        constants,
-    } = TACTIC;
+    if (
+        typeof TACTIC.use !==
+        "function"
+    ) {
+        console.error(
+            "[TACTIC Deposit] Dependency Registry is unavailable."
+        );
+
+        return;
+    }
+
+    let requiredDependencies;
+    let optionalDependencies;
+
+    try {
+        requiredDependencies =
+            TACTIC.use([
+                "capabilities",
+                "depositdestinations",
+                "navigation",
+                "dom",
+            ]);
+
+        optionalDependencies =
+            TACTIC.use({
+                storage:
+                    false,
+
+                logger:
+                    false,
+
+                notifications:
+                    false,
+
+                errors:
+                    false,
+
+                health:
+                    false,
+            });
+    } catch (error) {
+        console.error(
+            "[TACTIC Deposit] Required dependencies are unavailable.",
+            error
+        );
+
+        return;
+    }
 
     const {
         capabilities,
-        depositDestinations,
+        depositdestinations,
         navigation,
         dom,
+    } = requiredDependencies;
+
+    const depositDestinations =
+        depositdestinations;
+
+    const {
         storage,
         logger,
         notifications,
         errors,
         health,
-    } = services;
+    } = optionalDependencies;
 
     const {
         HEALTH_STATES,
-    } = constants;
+    } = TACTIC.constants;
 
     if (
-        !capabilities ||
-        !depositDestinations ||
-        !navigation ||
         typeof navigation.subscribe !==
             "function" ||
-        !dom ||
         !dom.pages
     ) {
         console.error(
-            "[TACTIC Deposit] Required dependencies are unavailable."
+            "[TACTIC Deposit] Required dependency APIs are unavailable."
         );
 
         return;
@@ -450,8 +497,6 @@
     function getStorage() {
         return (
             storage ||
-            TACTIC.services
-                .storage ||
             null
         );
     }
@@ -1855,6 +1900,40 @@
             service:
                 "deposit",
 
+            dependencySource:
+                "TACTIC.use",
+
+            dependencies: {
+                capabilities:
+                    Boolean(capabilities),
+
+                depositDestinations:
+                    Boolean(
+                        depositDestinations
+                    ),
+
+                navigation:
+                    Boolean(navigation),
+
+                dom:
+                    Boolean(dom),
+
+                storage:
+                    Boolean(storage),
+
+                logger:
+                    Boolean(logger),
+
+                notifications:
+                    Boolean(notifications),
+
+                errors:
+                    Boolean(errors),
+
+                health:
+                    Boolean(health),
+            },
+
             startedAt:
                 metrics.startedAt,
 
@@ -2009,6 +2088,9 @@
 
             requiresHeartbeat:
                 false,
+
+            dependencySource:
+                "TACTIC.use",
         },
     });
 
@@ -2050,6 +2132,9 @@
             registeredHelpers:
                 dom.pages
                     .listHelpers(),
+
+            dependencySource:
+                "TACTIC.use",
         }
     );
 })();
