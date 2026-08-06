@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TACTIC Modular Dev
 // @namespace    https://github.com/jonrlstockwell/TACTIC
-// @version      0.3.0-dev
+// @version      0.3.1-dev
 // @description  Torn Assistant & Companion Toolkit (Development Build)
 // @author       Jon Stockwell
 // @match        https://www.torn.com/*
@@ -118,10 +118,19 @@
 //
 //
 // ============================================================
+// FINANCE ENGINE
+// Shared financial calculations and recommendation logic.
+// Must load before the Finance Repository.
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/index.js?v=1
+//
+//
+// ============================================================
 // REPOSITORIES
 // ============================================================
 //
-// User Repository depends on DOM and selector services.
+// Repositories depend on their supporting services.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=2
@@ -142,14 +151,6 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/diagnostics/index.js?v=1
-//
-//
-// ============================================================
-// FINANCE ENGINE
-// Shared financial calculations and recommendation logic.
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/index.js?v=1
 //
 //
 // ============================================================
