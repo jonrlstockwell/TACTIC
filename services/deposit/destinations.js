@@ -13,7 +13,8 @@
  *
  * Responsibilities:
  * - Define supported deposit destinations
- * - Store verified destination-specific selectors
+ * - Associate destinations with registered DOM page helpers
+ * - Store verified destination-specific selector paths
  * - Associate deposit destinations with navigation routes
  * - Describe destination capabilities
  * - Expose destination diagnostics
@@ -135,6 +136,22 @@
         return normalized;
     }
 
+    function normalizeOptionalId(
+        value
+    ) {
+        if (
+            typeof value !==
+                "string" ||
+            !value.trim()
+        ) {
+            return null;
+        }
+
+        return normalizeId(
+            value
+        );
+    }
+
     function normalizeDefinition(
         definition
     ) {
@@ -174,12 +191,9 @@
                     : "",
 
             routeId:
-                typeof definition.routeId ===
-                    "string" &&
-                definition.routeId.trim()
-                    ? definition.routeId
-                          .trim()
-                    : null,
+                normalizeOptionalId(
+                    definition.routeId
+                ),
 
             routeUrl:
                 typeof definition.routeUrl ===
@@ -190,12 +204,14 @@
                     : null,
 
             pageId:
-                typeof definition.pageId ===
-                    "string" &&
-                definition.pageId.trim()
-                    ? definition.pageId
-                          .trim()
-                    : null,
+                normalizeOptionalId(
+                    definition.pageId
+                ),
+
+            helperId:
+                normalizeOptionalId(
+                    definition.helperId
+                ),
 
             amountSelectorPath:
                 typeof definition
@@ -277,6 +293,9 @@
             pageId:
                 destination.pageId,
 
+            helperId:
+                destination.helperId,
+
             amountSelectorPath:
                 destination
                     .amountSelectorPath,
@@ -304,6 +323,27 @@
             registeredAt:
                 destination.registeredAt,
         };
+    }
+
+    function matchesPersonalVaultRoute(
+        currentRoute
+    ) {
+        if (!currentRoute) {
+            return false;
+        }
+
+        return (
+            currentRoute.pathname ===
+                "/properties.php" &&
+            currentRoute
+                .hashParameters
+                ?.p ===
+                "options" &&
+            currentRoute
+                .hashParameters
+                ?.tab ===
+                "vault"
+        );
     }
 
     function registerNavigationRoute(
@@ -336,6 +376,22 @@
             match({
                 currentRoute,
             }) {
+                if (
+                    destination.id ===
+                    DESTINATION_IDS
+                        .PERSONAL_VAULT
+                ) {
+                    /*
+                     * The property ID can change if the player moves
+                     * to another property. Match the Personal Vault
+                     * by pathname and stable hash parameters instead
+                     * of requiring the current property ID.
+                     */
+                    return matchesPersonalVaultRoute(
+                        currentRoute
+                    );
+                }
+
                 const target =
                     new URL(
                         destination
@@ -360,6 +416,9 @@
 
                 destinationId:
                     destination.id,
+
+                helperId:
+                    destination.helperId,
             },
         });
 
@@ -486,6 +545,23 @@
                 );
         }
 
+        if (
+            filters.helperId !==
+            undefined
+        ) {
+            const helperId =
+                normalizeOptionalId(
+                    filters.helperId
+                );
+
+            results =
+                results.filter(
+                    (destination) =>
+                        destination.helperId ===
+                        helperId
+                );
+        }
+
         return results
             .map(
                 createSnapshot
@@ -531,6 +607,16 @@
                         destination.id
                 ),
 
+            helperMappings:
+                Object.fromEntries(
+                    list().map(
+                        (destination) => [
+                            destination.id,
+                            destination.helperId,
+                        ]
+                    )
+                ),
+
             metrics: {
                 ...metrics,
             },
@@ -561,6 +647,9 @@
         pageId:
             "faction",
 
+        helperId:
+            "faction-bank",
+
         amountSelectorPath:
             "FACTION.DEPOSIT_AMOUNT",
 
@@ -578,6 +667,14 @@
 
         verified:
             true,
+
+        metadata: {
+            destinationType:
+                "faction",
+
+            manualSubmissionRequired:
+                true,
+        },
     });
 
     register({
@@ -589,25 +686,41 @@
             "Personal Vault",
 
         description:
-            "Prepares a deposit into the player's personal vault.",
+            "Prepares a deposit into the player's Personal Vault.",
 
         routeId:
-            null,
+            "deposit:personal-vault",
 
+        /*
+         * This URL opens the currently verified property.
+         *
+         * Route matching intentionally ignores the property ID so
+         * TACTIC recognizes another property's Vault page as the
+         * same destination. Navigating from another page still uses
+         * this configured property URL.
+         */
         routeUrl:
-            null,
+            "/properties.php#/p=options&ID=2370381&tab=vault",
 
+        /*
+         * The DOM page catalog does not currently define a
+         * Properties page. This ID is still useful route metadata
+         * and does not prevent helper-based preparation.
+         */
         pageId:
-            null,
+            "properties",
+
+        helperId:
+            "personal-vault",
 
         amountSelectorPath:
-            null,
+            "VAULT.DEPOSIT_AMOUNT",
 
         submitSelectorPath:
-            null,
+            "VAULT.DEPOSIT_BUTTON",
 
         fillSupported:
-            false,
+            true,
 
         submitSupported:
             false,
@@ -616,7 +729,21 @@
             false,
 
         verified:
-            false,
+            true,
+
+        metadata: {
+            destinationType:
+                "personal-property",
+
+            propertyId:
+                2370381,
+
+            routeMatchIgnoresPropertyId:
+                true,
+
+            manualSubmissionRequired:
+                true,
+        },
     });
 
     register({
@@ -638,6 +765,9 @@
         pageId:
             null,
 
+        helperId:
+            null,
+
         amountSelectorPath:
             null,
 
@@ -655,6 +785,14 @@
 
         verified:
             false,
+
+        metadata: {
+            destinationType:
+                "bank-investment",
+
+            manualSubmissionRequired:
+                true,
+        },
     });
 
     TACTIC.services
@@ -671,6 +809,22 @@
         });
 
     logger?.info(
-        "Deposit destination registry loaded"
+        "Deposit destination registry loaded",
+        {
+            destinationCount:
+                destinations.size,
+
+            supportedForPreparation:
+                list({
+                    verified:
+                        true,
+
+                    fillSupported:
+                        true,
+                }).map(
+                    (destination) =>
+                        destination.id
+                ),
+        }
     );
 })();
