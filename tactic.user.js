@@ -172,6 +172,14 @@
 //
 //
 // ============================================================
+// FINANCE SECTIONS
+// Must load after the Finance application shell.
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/sections/wallet.js?v=1
+//
+//
+// ============================================================
 // PROTECTION APPLICATION
 // ============================================================
 //
