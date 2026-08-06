@@ -97,7 +97,7 @@
                 "capabilities",
                 "depositdestinations",
                 "navigation",
-                "dom",
+                "pageapi",
             ]);
 
         optionalDependencies =
@@ -130,7 +130,9 @@
         capabilities,
         depositdestinations,
         navigation,
-        dom,
+
+        pageapi:
+            pageApi,
     } = requiredDependencies;
 
     const depositDestinations =
@@ -151,7 +153,13 @@
     if (
         typeof navigation.subscribe !==
             "function" ||
-        !dom.pages
+        !pageApi ||
+        typeof pageApi.get !==
+            "function" ||
+        typeof pageApi.require !==
+            "function" ||
+        typeof pageApi.list !==
+            "function"
     ) {
         console.error(
             "[TACTIC Deposit] Required dependency APIs are unavailable."
@@ -671,7 +679,7 @@
         );
     }
 
-    function getHelper(
+    function getPage(
         helperId
     ) {
         metrics.helperResolutions +=
@@ -689,18 +697,18 @@
             return null;
         }
 
-        const helper =
-            dom.pages.getHelper(
+        const page =
+            pageApi.get(
                 helperId
             );
 
-        if (!helper) {
+        if (!page) {
             metrics
                 .helperResolutionFailures +=
                 1;
         }
 
-        return helper;
+        return page;
     }
 
     function canPrepare(
@@ -733,12 +741,20 @@
                 destination
             );
 
+        if (!helperId) {
+            return false;
+        }
+
+        const page =
+            pageApi.get(
+                helperId
+            );
+
         return Boolean(
-            helperId &&
-            dom.pages.can(
-                helperId,
-                PREPARE_CAPABILITY
-            )
+            page &&
+            page.deposit
+                .prepareSupported ===
+                true
         );
     }
 
@@ -800,7 +816,7 @@
                             "destination-not-mapped",
 
                         message:
-                            `${destination.name} preparation is unavailable until its route and page helper are verified.`,
+                            `${destination.name} preparation is unavailable until its route and page integration are verified.`,
                     }),
             };
         }
@@ -830,19 +846,20 @@
                         amount,
 
                         reason:
-                            "helper-not-configured",
+                            "page-not-configured",
 
                         message:
-                            `${destination.name} does not have a registered DOM page helper.`,
+                            `${destination.name} does not have a configured Page API entry.`,
                     }),
             };
         }
 
-        if (
-            !dom.pages.hasHelper(
+        const page =
+            pageApi.get(
                 helperId
-            )
-        ) {
+            );
+
+        if (!page) {
             metrics
                 .helperResolutionFailures +=
                 1;
@@ -864,19 +881,18 @@
                         amount,
 
                         reason:
-                            "helper-unavailable",
+                            "page-unavailable",
 
                         message:
-                            `The DOM page helper for ${destination.name} is unavailable.`,
+                            `The Page API entry for ${destination.name} is unavailable.`,
                     }),
             };
         }
 
         if (
-            !dom.pages.can(
-                helperId,
-                PREPARE_CAPABILITY
-            )
+            page.deposit
+                .prepareSupported !==
+            true
         ) {
             metrics
                 .helperResolutionFailures +=
@@ -899,10 +915,10 @@
                         amount,
 
                         reason:
-                            "helper-capability-unavailable",
+                            "page-capability-unavailable",
 
                         message:
-                            `The ${destination.name} page helper does not support deposit preparation.`,
+                            `The ${destination.name} page does not support deposit preparation.`,
                     }),
             };
         }
@@ -914,6 +930,8 @@
             destination,
 
             helperId,
+
+            page,
         };
     }
 
