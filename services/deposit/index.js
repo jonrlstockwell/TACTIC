@@ -735,8 +735,9 @@
 
         return Boolean(
             helperId &&
-            dom.pages.hasHelper(
-                helperId
+            dom.pages.can(
+                helperId,
+                PREPARE_CAPABILITY
             )
         );
     }
@@ -867,6 +868,41 @@
 
                         message:
                             `The DOM page helper for ${destination.name} is unavailable.`,
+                    }),
+            };
+        }
+
+        if (
+            !dom.pages.can(
+                helperId,
+                PREPARE_CAPABILITY
+            )
+        ) {
+            metrics
+                .helperResolutionFailures +=
+                1;
+
+            return {
+                valid:
+                    false,
+
+                result:
+                    createResult({
+                        destination:
+                            destination.id,
+
+                        destinationName:
+                            destination.name,
+
+                        helperId,
+
+                        amount,
+
+                        reason:
+                            "helper-capability-unavailable",
+
+                        message:
+                            `The ${destination.name} page helper does not support deposit preparation.`,
                     }),
             };
         }
@@ -1175,8 +1211,10 @@
         }
 
         if (
-            typeof helper.prepareDeposit !==
-                "function"
+            !dom.pages.can(
+                helper,
+                PREPARE_CAPABILITY
+            )
         ) {
             metrics
                 .helperPreparationFailures +=
@@ -1194,7 +1232,7 @@
                 amount,
 
                 reason:
-                    "helper-method-unavailable",
+                    "helper-capability-unavailable",
 
                 message:
                     `The ${destination.name} helper does not support deposit preparation.`,
@@ -1205,7 +1243,9 @@
 
         try {
             helperResult =
-                await helper.prepareDeposit(
+                await dom.pages.invoke(
+                    helper,
+                    PREPARE_CAPABILITY,
                     amount,
                     {
                         highlightSubmit:
@@ -1970,6 +2010,15 @@
                     Boolean(
                         dom.pages
                     ),
+
+                frameworkAvailable:
+                    typeof dom.pages.can ===
+                        "function" &&
+                    typeof dom.pages.invoke ===
+                        "function",
+
+                capability:
+                    PREPARE_CAPABILITY,
 
                 navigationSubscriptionId,
 
