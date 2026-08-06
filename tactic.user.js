@@ -54,7 +54,7 @@
 //
 // Core runtime infrastructure.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/capabilities/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/state/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/jobs/index.js?v=1
