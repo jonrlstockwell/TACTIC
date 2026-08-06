@@ -1324,8 +1324,8 @@
                         createAction(
                             ACTION_TYPES
                                 .OPEN_FINANCE_TAB,
-                            "overview",
-                            "Review Finance Overview"
+                            "bank",
+                            "View Active Investment"
                         ),
 
                     metadata: {
