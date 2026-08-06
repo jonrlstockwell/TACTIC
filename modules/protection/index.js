@@ -108,13 +108,32 @@
                 "protection",
             ]);
     } catch (error) {
-        console.error(
-            "[TACTIC Protection] Required dependencies are unavailable.",
-            error
-        );
+    console.error(
+        "[TACTIC Protection] Required dependencies are unavailable.",
+        {
+            message:
+                error?.message ||
+                String(error),
 
-        return;
-    }
+            error,
+
+            requestedDependencies: [
+                "actions",
+                "capabilities",
+                "deposit",
+                "drawer",
+                "logger",
+                "events",
+                "notifications",
+                "health",
+                "user",
+                "protection",
+            ],
+        }
+    );
+
+    return;
+}
 
     const {
         actions,
@@ -1815,9 +1834,6 @@
 
                 protection:
                     Boolean(protection),
-
-                developer:
-                    Boolean(developer),
             },
 
             initialized:
