@@ -178,7 +178,7 @@
 // Finance application shell. Individual Finance sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=2
 //
 //
 // ============================================================

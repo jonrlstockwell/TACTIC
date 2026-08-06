@@ -8,37 +8,47 @@
  * modules/finance/index.js
  *
  * Purpose:
- * Provides the Finance application shell and composes registered
- * Finance sections into one unified drawer workspace.
+ * Provides the Finance application shell, internal tab
+ * navigation, overview workspace, and registered Finance
+ * section rendering.
  *
  * Responsibilities:
  * - Create or retrieve the Finance Section Manager
  * - Register the Finance drawer module
- * - Render enabled Finance sections in configured order
- * - Display an empty state when no sections are registered
- * - Refresh the Finance page when its sections change
- * - Expose Finance application diagnostics
+ * - Generate tabs from registered Finance sections
+ * - Provide a compact Finance overview
+ * - Render one Finance section at a time
+ * - Persist the selected Finance tab
+ * - Refresh the active Finance workspace when data changes
+ * - Expose Finance application diagnostics and navigation
  *
  * Does NOT:
  * - Scrape Torn financial data
- * - Own wallet, bank, stock, or net-worth data
+ * - Own wallet, bank, stock, income, or net-worth data
  * - Perform financial transactions
- * - Contain individual Finance section implementations
+ * - Contain section-specific business logic
  *
  * Public API:
  * - TACTIC.finance.sections
  * - TACTIC.finance.registerSection()
  * - TACTIC.finance.unregisterSection()
+ * - TACTIC.finance.enableSection()
+ * - TACTIC.finance.disableSection()
+ * - TACTIC.finance.getSection()
+ * - TACTIC.finance.getSections()
+ * - TACTIC.finance.getActiveTab()
+ * - TACTIC.finance.setActiveTab()
  * - TACTIC.finance.refresh()
  * - TACTIC.finance.inspect()
  *
  * Dependencies:
  * - core/section-manager.js
  * - core/module-manager.js
- * - ui/drawer/index.js
+ * - core/storage.js
  * - core/events.js
  * - core/logger.js
  * - core/health.js
+ * - ui/drawer/index.js
  *
  * ============================================================
  */
@@ -95,8 +105,14 @@
     const SECTION_MANAGER_ID =
         "finance";
 
+    const OVERVIEW_TAB_ID =
+        "overview";
+
+    const STORAGE_KEY =
+        "finance:active-tab";
+
     const MODULE_VERSION =
-        "1.0.0";
+        "1.1.0";
 
     const MODULE_ORDER =
         200;
@@ -116,6 +132,9 @@
 
     const health =
         services.health;
+
+    const storage =
+        services.storage;
 
     if (!drawer) {
         console.error(
@@ -156,6 +175,9 @@
     let refreshTimerId =
         null;
 
+    let activeTabId =
+        readStoredTab();
+
     const removeEventListeners =
         [];
 
@@ -181,7 +203,19 @@
         failedRenders:
             0,
 
+        overviewRenders:
+            0,
+
+        sectionRenders:
+            0,
+
         emptyStateRenders:
+            0,
+
+        tabChanges:
+            0,
+
+        rejectedTabChanges:
             0,
 
         refreshRequests:
@@ -209,6 +243,9 @@
             null,
 
         lastRefreshCompletedAt:
+            null,
+
+        lastTabChangedAt:
             null,
 
         lastSectionEventAt:
@@ -330,6 +367,281 @@
         return element;
     }
 
+    function formatMoney(
+        value
+    ) {
+        if (
+            !Number.isFinite(
+                value
+            )
+        ) {
+            return "Unavailable";
+        }
+
+        return new Intl.NumberFormat(
+            "en-US",
+            {
+                style:
+                    "currency",
+
+                currency:
+                    "USD",
+
+                maximumFractionDigits:
+                    0,
+            }
+        ).format(
+            value
+        );
+    }
+
+    function formatDuration(
+        milliseconds
+    ) {
+        if (
+            !Number.isFinite(
+                milliseconds
+            )
+        ) {
+            return "Unavailable";
+        }
+
+        const totalMinutes =
+            Math.max(
+                0,
+                Math.floor(
+                    milliseconds /
+                    60_000
+                )
+            );
+
+        const days =
+            Math.floor(
+                totalMinutes /
+                1_440
+            );
+
+        const hours =
+            Math.floor(
+                (
+                    totalMinutes %
+                    1_440
+                ) /
+                60
+            );
+
+        const minutes =
+            totalMinutes %
+            60;
+
+        if (days > 0) {
+            return `${days}d ${hours}h ${minutes}m`;
+        }
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        }
+
+        return `${minutes}m`;
+    }
+
+    function readStoredTab() {
+        try {
+            const stored =
+                storage?.get?.(
+                    STORAGE_KEY,
+                    OVERVIEW_TAB_ID
+                );
+
+            return typeof stored ===
+                "string" &&
+                stored.trim()
+                ? stored.trim()
+                : OVERVIEW_TAB_ID;
+        } catch {
+            return OVERVIEW_TAB_ID;
+        }
+    }
+
+    function storeActiveTab(
+        tabId
+    ) {
+        try {
+            storage?.set?.(
+                STORAGE_KEY,
+                tabId
+            );
+        } catch (error) {
+            logger?.warn(
+                "Finance active tab could not be stored",
+                {
+                    tabId,
+                    error,
+                }
+            );
+        }
+    }
+
+    function getEnabledSections() {
+        return sectionManager.getAll({
+            includeDisabled:
+                false,
+        });
+    }
+
+    function getAvailableTabIds() {
+        return [
+            OVERVIEW_TAB_ID,
+            ...getEnabledSections()
+                .map(
+                    section =>
+                        section.id
+                ),
+        ];
+    }
+
+    function isValidTab(
+        tabId
+    ) {
+        return getAvailableTabIds()
+            .includes(
+                tabId
+            );
+    }
+
+    function normalizeActiveTab() {
+        if (
+            isValidTab(
+                activeTabId
+            )
+        ) {
+            return activeTabId;
+        }
+
+        activeTabId =
+            OVERVIEW_TAB_ID;
+
+        storeActiveTab(
+            activeTabId
+        );
+
+        return activeTabId;
+    }
+
+    function getActiveTab() {
+        return normalizeActiveTab();
+    }
+
+    async function setActiveTab(
+        tabId,
+        options = {}
+    ) {
+        const normalized =
+            String(
+                tabId ||
+                ""
+            ).trim();
+
+        if (
+            !isValidTab(
+                normalized
+            )
+        ) {
+            metrics.rejectedTabChanges +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                changed:
+                    false,
+
+                reason:
+                    "finance-tab-unavailable",
+
+                requestedTab:
+                    normalized,
+
+                availableTabs:
+                    getAvailableTabIds(),
+            };
+        }
+
+        const previousTab =
+            activeTabId;
+
+        if (
+            previousTab ===
+            normalized
+        ) {
+            return {
+                success:
+                    true,
+
+                changed:
+                    false,
+
+                previousTab,
+
+                activeTab:
+                    activeTabId,
+            };
+        }
+
+        activeTabId =
+            normalized;
+
+        storeActiveTab(
+            activeTabId
+        );
+
+        metrics.tabChanges +=
+            1;
+
+        metrics.lastTabChangedAt =
+            Date.now();
+
+        events?.emit?.(
+            "finance:tab-changed",
+            {
+                previousTab,
+
+                activeTab:
+                    activeTabId,
+
+                source:
+                    options.source ||
+                    "finance-api",
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        if (
+            options.refresh !==
+            false
+        ) {
+            await refresh(
+                "finance-tab-changed"
+            );
+        }
+
+        return {
+            success:
+                true,
+
+            changed:
+                true,
+
+            previousTab,
+
+            activeTab:
+                activeTabId,
+        };
+    }
+
     function isFinancePageActive() {
         return (
             drawer
@@ -354,7 +666,7 @@
                             "6px",
 
                         marginBottom:
-                            "16px",
+                            "12px",
                     },
                 }
             );
@@ -390,7 +702,7 @@
                 "p",
                 {
                     text:
-                        "Your financial command center for wallet protection, investments, income, assets, and planning.",
+                        "Wallet management, investments, income, assets, and financial planning.",
 
                     styles: {
                         margin:
@@ -416,105 +728,1048 @@
         return header;
     }
 
-    function createEmptyState() {
-        metrics.emptyStateRenders +=
-            1;
-
-        const emptyState =
+    function createTabButton(
+        tab,
+        selected
+    ) {
+        const button =
             createElement(
-                "div",
+                "button",
+                {
+                    text:
+                        tab.icon
+                            ? `${tab.icon} ${tab.name}`
+                            : tab.name,
+
+                    attributes: {
+                        type:
+                            "button",
+
+                        role:
+                            "tab",
+
+                        "aria-selected":
+                            selected
+                                ? "true"
+                                : "false",
+
+                        "data-finance-tab":
+                            tab.id,
+                    },
+
+                    styles: {
+                        flex:
+                            "0 0 auto",
+
+                        padding:
+                            "8px 10px",
+
+                        border:
+                            selected
+                                ? "1px solid rgba(75,145,230,.35)"
+                                : "1px solid rgba(255,255,255,.12)",
+
+                        borderRadius:
+                            "6px",
+
+                        background:
+                            selected
+                                ? "rgba(75,145,230,.16)"
+                                : "rgba(255,255,255,.04)",
+
+                        color:
+                            selected
+                                ? "#dceeff"
+                                : "#bbb",
+
+                        cursor:
+                            "pointer",
+
+                        fontSize:
+                            "11px",
+
+                        fontWeight:
+                            selected
+                                ? "800"
+                                : "700",
+
+                        whiteSpace:
+                            "nowrap",
+                    },
+                }
+            );
+
+        button.addEventListener(
+            "click",
+            () => {
+                setActiveTab(
+                    tab.id,
+                    {
+                        source:
+                            "finance-tab-navigation",
+                    }
+                );
+            }
+        );
+
+        return button;
+    }
+
+    function createTabNavigation() {
+        const selectedTab =
+            getActiveTab();
+
+        const navigation =
+            createElement(
+                "nav",
                 {
                     className:
-                        "tactic-finance-empty-state",
+                        "tactic-finance-tabs",
+
+                    attributes: {
+                        role:
+                            "tablist",
+
+                        "aria-label":
+                            "Finance sections",
+                    },
+
+                    styles: {
+                        display:
+                            "flex",
+
+                        gap:
+                            "6px",
+
+                        overflowX:
+                            "auto",
+
+                        padding:
+                            "2px 0 10px",
+
+                        marginBottom:
+                            "12px",
+
+                        borderBottom:
+                            "1px solid rgba(255,255,255,.10)",
+
+                        scrollbarWidth:
+                            "thin",
+                    },
+                }
+            );
+
+        const tabs = [
+            {
+                id:
+                    OVERVIEW_TAB_ID,
+
+                name:
+                    "Overview",
+
+                icon:
+                    "📊",
+
+                order:
+                    0,
+            },
+
+            ...getEnabledSections()
+                .map(
+                    section => ({
+                        id:
+                            section.id,
+
+                        name:
+                            section.name,
+
+                        icon:
+                            section.icon,
+
+                        order:
+                            section.order,
+                    })
+                ),
+        ];
+
+        for (
+            const tab of
+            tabs
+        ) {
+            navigation.appendChild(
+                createTabButton(
+                    tab,
+                    tab.id ===
+                        selectedTab
+                )
+            );
+        }
+
+        return navigation;
+    }
+
+    function createSummaryCard(
+        label,
+        value,
+        options = {}
+    ) {
+        const card =
+            createElement(
+                "button",
+                {
+                    attributes: {
+                        type:
+                            "button",
+                    },
 
                     styles: {
                         boxSizing:
                             "border-box",
 
+                        width:
+                            "100%",
+
+                        minWidth:
+                            "0",
+
                         padding:
-                            "18px 16px",
+                            "11px 12px",
 
                         border:
-                            "1px solid rgba(255,255,255,.12)",
+                            `1px solid ${
+                                options.border ||
+                                "rgba(255,255,255,.11)"
+                            }`,
 
                         borderRadius:
                             "7px",
 
                         background:
+                            options.background ||
                             "rgba(255,255,255,.035)",
 
                         textAlign:
-                            "center",
+                            "left",
+
+                        cursor:
+                            options.onClick
+                                ? "pointer"
+                                : "default",
                     },
                 }
             );
 
-        const title =
+        const labelElement =
             createElement(
                 "div",
                 {
                     text:
-                        "Finance Dashboard",
+                        label,
 
                     styles: {
                         marginBottom:
+                            "5px",
+
+                        color:
+                            "#969696",
+
+                        fontSize:
+                            "10px",
+
+                        fontWeight:
+                            "700",
+
+                        letterSpacing:
+                            ".04em",
+
+                        textTransform:
+                            "uppercase",
+                    },
+                }
+            );
+
+        const valueElement =
+            createElement(
+                "div",
+                {
+                    text:
+                        value,
+
+                    styles: {
+                        color:
+                            options.color ||
+                            "#f1f1f1",
+
+                        fontSize:
+                            options.compact
+                                ? "12px"
+                                : "16px",
+
+                        fontWeight:
+                            "800",
+
+                        lineHeight:
+                            "1.25",
+
+                        overflowWrap:
+                            "anywhere",
+                    },
+                }
+            );
+
+        card.append(
+            labelElement,
+            valueElement
+        );
+
+        if (options.detail) {
+            card.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            options.detail,
+
+                        styles: {
+                            marginTop:
+                                "5px",
+
+                            color:
+                                "#888",
+
+                            fontSize:
+                                "9px",
+
+                            lineHeight:
+                                "1.35",
+                        },
+                    }
+                )
+            );
+        }
+
+        if (
+            typeof options.onClick ===
+            "function"
+        ) {
+            card.addEventListener(
+                "click",
+                options.onClick
+            );
+        } else {
+            card.disabled =
+                true;
+
+            card.style.opacity =
+                "1";
+        }
+
+        return card;
+    }
+
+    function createOverviewHeading(
+        title,
+        actionText,
+        action
+    ) {
+        const row =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "flex",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "space-between",
+
+                        gap:
+                            "10px",
+
+                        paddingBottom:
                             "7px",
+
+                        borderBottom:
+                            "1px solid rgba(255,255,255,.09)",
+                    },
+                }
+            );
+
+        row.appendChild(
+            createElement(
+                "h3",
+                {
+                    text:
+                        title,
+
+                    styles: {
+                        margin:
+                            "0",
 
                         color:
                             "#eee",
 
                         fontSize:
-                            "15px",
-
-                        fontWeight:
-                            "700",
+                            "14px",
                     },
                 }
-            );
-
-        const message =
-            createElement(
-                "div",
-                {
-                    text:
-                        "No financial sections have been registered yet.",
-
-                    styles: {
-                        color:
-                            "#999",
-
-                        fontSize:
-                            "12px",
-
-                        lineHeight:
-                            "1.45",
-                    },
-                }
-            );
-
-        emptyState.append(
-            title,
-            message
+            )
         );
 
-        return emptyState;
+        if (
+            actionText &&
+            typeof action ===
+                "function"
+        ) {
+            const button =
+                createElement(
+                    "button",
+                    {
+                        text:
+                            actionText,
+
+                        attributes: {
+                            type:
+                                "button",
+                        },
+
+                        styles: {
+                            padding:
+                                "5px 8px",
+
+                            border:
+                                "1px solid rgba(255,255,255,.14)",
+
+                            borderRadius:
+                                "5px",
+
+                            background:
+                                "rgba(255,255,255,.05)",
+
+                            color:
+                                "#bbb",
+
+                            cursor:
+                                "pointer",
+
+                            fontSize:
+                                "10px",
+
+                            fontWeight:
+                                "700",
+                        },
+                    }
+                );
+
+            button.addEventListener(
+                "click",
+                action
+            );
+
+            row.appendChild(
+                button
+            );
+        }
+
+        return row;
     }
 
-    function createSectionRoot() {
+    function createEmptyOverview() {
+        metrics.emptyStateRenders +=
+            1;
+
         return createElement(
             "div",
             {
-                className:
-                    "tactic-finance-sections",
+                text:
+                    "No Finance sections have been registered yet.",
 
                 styles: {
-                    display:
-                        "grid",
+                    padding:
+                        "18px 16px",
 
-                    gap:
-                        "14px",
+                    border:
+                        "1px solid rgba(255,255,255,.12)",
+
+                    borderRadius:
+                        "7px",
+
+                    background:
+                        "rgba(255,255,255,.035)",
+
+                    color:
+                        "#999",
+
+                    fontSize:
+                        "12px",
+
+                    textAlign:
+                        "center",
                 },
             }
+        );
+    }
+
+    function createWalletOverview(
+        financeRepository
+    ) {
+        const section =
+            createElement(
+                "section",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "8px",
+                    },
+                }
+            );
+
+        section.appendChild(
+            createOverviewHeading(
+                "Wallet",
+                "View Wallet",
+                () => {
+                    setActiveTab(
+                        "wallet",
+                        {
+                            source:
+                                "finance-overview",
+                        }
+                    );
+                }
+            )
+        );
+
+        const wallet =
+            financeRepository
+                ?.getWallet?.() ||
+            null;
+
+        const protection =
+            TACTIC.protection
+                ?.inspect?.() ||
+            null;
+
+        const evaluation =
+            protection
+                ?.evaluation ||
+            null;
+
+        const configuration =
+            protection
+                ?.configuration ||
+            null;
+
+        const grid =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "repeat(2, minmax(0,1fr))",
+
+                        gap:
+                            "7px",
+                    },
+                }
+            );
+
+        grid.append(
+            createSummaryCard(
+                "Current Balance",
+                wallet?.available
+                    ? formatMoney(
+                          wallet.value
+                      )
+                    : "Unavailable",
+                {
+                    onClick:
+                        () => {
+                            setActiveTab(
+                                "wallet",
+                                {
+                                    source:
+                                        "finance-overview",
+                                }
+                            );
+                        },
+                }
+            ),
+
+            createSummaryCard(
+                "Recommended Deposit",
+                Number.isFinite(
+                    evaluation
+                        ?.depositAmount
+                )
+                    ? formatMoney(
+                          evaluation
+                              .depositAmount
+                      )
+                    : "$0",
+                {
+                    color:
+                        evaluation
+                            ?.shouldDeposit
+                            ? "#ffcc80"
+                            : "#a5d6a7",
+
+                    detail:
+                        configuration
+                            ?.enabled
+                            ? evaluation
+                                  ?.shouldDeposit
+                                ? "Deposit recommended"
+                                : "Wallet within limit"
+                            : "Protection disabled",
+
+                    onClick:
+                        () => {
+                            setActiveTab(
+                                "wallet",
+                                {
+                                    source:
+                                        "finance-overview",
+                                }
+                            );
+                        },
+                }
+            )
+        );
+
+        section.appendChild(
+            grid
+        );
+
+        return section;
+    }
+
+    function createBankOverview(
+        financeRepository
+    ) {
+        const section =
+            createElement(
+                "section",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "8px",
+                    },
+                }
+            );
+
+        section.appendChild(
+            createOverviewHeading(
+                "Investment Bank",
+                "View Bank",
+                () => {
+                    setActiveTab(
+                        "bank",
+                        {
+                            source:
+                                "finance-overview",
+                        }
+                    );
+                }
+            )
+        );
+
+        const bank =
+            financeRepository
+                ?.getInvestmentBank?.() ||
+            null;
+
+        const active =
+            bank
+                ?.activeInvestment;
+
+        const recommendation =
+            bank
+                ?.analysis
+                ?.recommendation
+                ?.recommendation;
+
+        const countdown =
+            active
+                ?.countdown;
+
+        const remainingMs =
+            Number.isFinite(
+                countdown
+                    ?.estimatedMaturesAt
+            )
+                ? Math.max(
+                      0,
+                      countdown
+                          .estimatedMaturesAt -
+                      Date.now()
+                  )
+                : countdown
+                      ?.milliseconds;
+
+        const grid =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "repeat(2, minmax(0,1fr))",
+
+                        gap:
+                            "7px",
+                    },
+                }
+            );
+
+        grid.append(
+            createSummaryCard(
+                active?.active
+                    ? "Active Payout"
+                    : "Bank Status",
+                active?.active
+                    ? formatMoney(
+                          active
+                              ?.payout
+                              ?.value
+                      )
+                    : bank?.available
+                      ? "Available"
+                      : "Unavailable",
+                {
+                    detail:
+                        active?.active
+                            ? `${formatDuration(
+                                  remainingMs
+                              )} remaining`
+                            : "No active investment",
+
+                    onClick:
+                        () => {
+                            setActiveTab(
+                                "bank",
+                                {
+                                    source:
+                                        "finance-overview",
+                                }
+                            );
+                        },
+                }
+            ),
+
+            createSummaryCard(
+                "Recommended Term",
+                recommendation
+                    ?.option
+                    ?.label ||
+                "Unavailable",
+                {
+                    color:
+                        recommendation
+                            ? "#90caf9"
+                            : "#aaa",
+
+                    detail:
+                        recommendation
+                            ? `${formatMoney(
+                                  recommendation
+                                      .profit
+                                      ?.value
+                              )} projected profit`
+                            : "Open the Investment Bank page to load rates",
+
+                    onClick:
+                        () => {
+                            setActiveTab(
+                                "bank",
+                                {
+                                    source:
+                                        "finance-overview",
+                                }
+                            );
+                        },
+                }
+            )
+        );
+
+        section.appendChild(
+            grid
+        );
+
+        return section;
+    }
+
+    function createUpcomingPlaceholder() {
+        const section =
+            createElement(
+                "section",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "8px",
+                    },
+                }
+            );
+
+        section.appendChild(
+            createOverviewHeading(
+                "Coming Later"
+            )
+        );
+
+        const grid =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "repeat(2, minmax(0,1fr))",
+
+                        gap:
+                            "7px",
+                    },
+                }
+            );
+
+        grid.append(
+            createSummaryCard(
+                "Income",
+                "Not yet added",
+                {
+                    compact:
+                        true,
+
+                    detail:
+                        "Daily, weekly, and monthly income tracking",
+                }
+            ),
+
+            createSummaryCard(
+                "Net Worth",
+                "Not yet added",
+                {
+                    compact:
+                        true,
+
+                    detail:
+                        "Assets, cash, investments, and historical growth",
+                }
+            ),
+
+            createSummaryCard(
+                "Advisor",
+                "Not yet added",
+                {
+                    compact:
+                        true,
+
+                    detail:
+                        "Financial recommendations and next actions",
+                }
+            )
+        );
+
+        section.appendChild(
+            grid
+        );
+
+        return section;
+    }
+
+    function renderOverview(
+        container
+    ) {
+        metrics.overviewRenders +=
+            1;
+
+        const sections =
+            getEnabledSections();
+
+        if (
+            sections.length ===
+            0
+        ) {
+            container.replaceChildren(
+                createEmptyOverview()
+            );
+
+            return {
+                success:
+                    true,
+
+                rendered:
+                    true,
+
+                empty:
+                    true,
+            };
+        }
+
+        const repository =
+            TACTIC.repositories
+                ?.finance ||
+            null;
+
+        const overview =
+            createElement(
+                "div",
+                {
+                    className:
+                        "tactic-finance-overview",
+
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "16px",
+                    },
+                }
+            );
+
+        if (
+            sectionManager.has(
+                "wallet"
+            )
+        ) {
+            overview.appendChild(
+                createWalletOverview(
+                    repository
+                )
+            );
+        }
+
+        if (
+            sectionManager.has(
+                "bank"
+            )
+        ) {
+            overview.appendChild(
+                createBankOverview(
+                    repository
+                )
+            );
+        }
+
+        overview.appendChild(
+            createUpcomingPlaceholder()
+        );
+
+        container.replaceChildren(
+            overview
+        );
+
+        return {
+            success:
+                true,
+
+            rendered:
+                true,
+
+            empty:
+                false,
+
+            overviewSectionCount:
+                overview.children
+                    .length,
+        };
+    }
+
+    async function renderSelectedSection(
+        container,
+        sectionId
+    ) {
+        metrics.sectionRenders +=
+            1;
+
+        container.replaceChildren();
+
+        const sectionContainer =
+            createElement(
+                "section",
+                {
+                    className:
+                        [
+                            "tactic-application-section",
+                            "tactic-finance-section",
+                            `tactic-finance-section-${sectionId}`,
+                        ].join(
+                            " "
+                        ),
+
+                    attributes: {
+                        "data-tactic-application":
+                            MODULE_ID,
+
+                        "data-tactic-section":
+                            sectionId,
+                    },
+                }
+            );
+
+        container.appendChild(
+            sectionContainer
+        );
+
+        return sectionManager.renderSection(
+            sectionId,
+            sectionContainer,
+            {
+                rootContainer:
+                    container,
+
+                application:
+                    MODULE_ID,
+
+                financeRepository:
+                    TACTIC.repositories
+                        ?.finance ||
+                    null,
+
+                activeTab:
+                    sectionId,
+            }
+        );
+    }
+
+    async function renderWorkspace(
+        container
+    ) {
+        const selectedTab =
+            getActiveTab();
+
+        if (
+            selectedTab ===
+            OVERVIEW_TAB_ID
+        ) {
+            return renderOverview(
+                container
+            );
+        }
+
+        return renderSelectedSection(
+            container,
+            selectedTab
         );
     }
 
@@ -559,90 +1814,49 @@
             null;
 
         try {
+            normalizeActiveTab();
+
             container.replaceChildren();
 
-            container.appendChild(
-                createPageHeader()
+            container.append(
+                createPageHeader(),
+                createTabNavigation()
             );
 
-            const sections =
-                sectionManager.getAll({
-                    includeDisabled:
-                        false,
-                });
-
-            if (
-                sections.length ===
-                0
-            ) {
-                container.appendChild(
-                    createEmptyState()
-                );
-
-                metrics.successfulRenders +=
-                    1;
-
-                metrics.lastRenderedAt =
-                    Date.now();
-
-                metrics.lastRenderDurationMs =
-                    metrics.lastRenderedAt -
-                    metrics.lastRenderStartedAt;
-
-                return {
-                    success:
-                        true,
-
-                    rendered:
-                        true,
-
-                    empty:
-                        true,
-
-                    sectionCount:
-                        0,
-
-                    durationMs:
-                        metrics
-                            .lastRenderDurationMs,
-                };
-            }
-
-            const sectionRoot =
-                createSectionRoot();
-
-            container.appendChild(
-                sectionRoot
-            );
-
-            const result =
-                await sectionManager.renderAll(
-                    sectionRoot,
+            const workspace =
+                createElement(
+                    "div",
                     {
-                        clear:
-                            true,
+                        className:
+                            "tactic-finance-workspace",
 
-                        sectionTagName:
-                            "section",
+                        attributes: {
+                            role:
+                                "tabpanel",
 
-                        removeFailed:
-                            false,
+                            "data-finance-active-tab":
+                                activeTabId,
+                        },
 
-                        context: {
-                            application:
-                                MODULE_ID,
-
-                            financeRepository:
-                                TACTIC.repositories
-                                    ?.finance ||
-                                null,
+                        styles: {
+                            minWidth:
+                                "0",
                         },
                     }
                 );
 
+            container.appendChild(
+                workspace
+            );
+
+            const result =
+                await renderWorkspace(
+                    workspace
+                );
+
             if (
-                result.success ===
-                true
+                result?.success !==
+                false
             ) {
                 metrics.successfulRenders +=
                     1;
@@ -661,10 +1875,13 @@
             return {
                 ...result,
 
-                empty:
-                    false,
+                application:
+                    MODULE_ID,
 
-                financeDurationMs:
+                activeTab:
+                    activeTabId,
+
+                durationMs:
                     metrics
                         .lastRenderDurationMs,
             };
@@ -682,6 +1899,9 @@
                 {
                     error,
 
+                    activeTab:
+                        activeTabId,
+
                     message:
                         metrics
                             .lastError
@@ -693,7 +1913,7 @@
                 createPageHeader()
             );
 
-            const errorNotice =
+            container.appendChild(
                 createElement(
                     "div",
                     {
@@ -720,10 +1940,7 @@
                                 "12px",
                         },
                     }
-                );
-
-            container.appendChild(
-                errorNotice
+                )
             );
 
             return {
@@ -821,6 +2038,9 @@
                 true,
 
             reason,
+
+            activeTab:
+                activeTabId,
 
             completedAt:
                 metrics
@@ -924,6 +2144,8 @@
                     .lastSectionEventAt,
         };
 
+        normalizeActiveTab();
+
         scheduleRefresh(
             eventName
         );
@@ -940,9 +2162,14 @@
     function unregisterSection(
         sectionId
     ) {
-        return sectionManager.unregister(
-            sectionId
-        );
+        const result =
+            sectionManager.unregister(
+                sectionId
+            );
+
+        normalizeActiveTab();
+
+        return result;
     }
 
     function enableSection(
@@ -956,9 +2183,14 @@
     function disableSection(
         sectionId
     ) {
-        return sectionManager.disable(
-            sectionId
-        );
+        const result =
+            sectionManager.disable(
+                sectionId
+            );
+
+        normalizeActiveTab();
+
+        return result;
     }
 
     function getSection(
@@ -997,6 +2229,12 @@
 
             active:
                 isFinancePageActive(),
+
+            activeTab:
+                getActiveTab(),
+
+            availableTabs:
+                getAvailableTabIds(),
 
             sectionManager:
                 sectionManager.inspect(),
@@ -1052,6 +2290,9 @@
             getSection,
             getSections,
 
+            getActiveTab,
+            setActiveTab,
+
             refresh,
             inspect,
         });
@@ -1093,6 +2334,8 @@
 
             metrics.initializationCount +=
                 1;
+
+            normalizeActiveTab();
 
             const sectionEventNames = [
                 SECTION_EVENTS
@@ -1164,6 +2407,12 @@
                             .getAll()
                             .length,
 
+                    activeTab:
+                        activeTabId,
+
+                    tabbedNavigation:
+                        true,
+
                     requiresHeartbeat:
                         false,
                 },
@@ -1176,6 +2425,12 @@
                         sectionManager
                             .getAll()
                             .length,
+
+                    activeTab:
+                        activeTabId,
+
+                    tabbedNavigation:
+                        true,
                 }
             );
 
@@ -1259,6 +2514,12 @@
         {
             sectionManagerId:
                 SECTION_MANAGER_ID,
+
+            activeTab:
+                activeTabId,
+
+            tabbedNavigation:
+                true,
         }
     );
 })();
