@@ -17,6 +17,7 @@
  * - Expose logical operation namespaces
  * - Invoke helper capabilities without exposing method names
  * - Preserve the page-helper safety boundary
+ * - Register the Page API with the Dependency Registry
  * - Expose Page API diagnostics
  *
  * Does NOT:
@@ -35,6 +36,10 @@
  * - TACTIC.page.inspect()
  * - TACTIC.services.pageApi
  * - TACTIC.services.dom.currentPage()
+ *
+ * Dependency Registry:
+ * - pageapi
+ * - page-api
  *
  * Dependencies:
  * - core/dependencies.js
@@ -61,7 +66,11 @@
 
     if (
         typeof TACTIC.use !==
-        "function"
+        "function" ||
+        !TACTIC.dependencies ||
+        typeof TACTIC.dependencies
+            .register !==
+            "function"
     ) {
         console.error(
             "[TACTIC Page API] Dependency Registry is unavailable."
@@ -104,6 +113,10 @@
         typeof dom.pages.can !==
             "function" ||
         typeof dom.pages.invoke !==
+            "function" ||
+        typeof dom.pages.describeHelper !==
+            "function" ||
+        typeof dom.pages.listHelpers !==
             "function"
     ) {
         console.error(
@@ -119,7 +132,15 @@
     const CAPABILITIES =
         pages.capabilities;
 
-    const façadeCache =
+    if (!CAPABILITIES) {
+        console.error(
+            "[TACTIC Page API] Page capability definitions are unavailable."
+        );
+
+        return;
+    }
+
+    const facadeCache =
         new WeakMap();
 
     const metrics = {
@@ -132,10 +153,10 @@
         helperRequests:
             0,
 
-        façadeCreations:
+        facadeCreations:
             0,
 
-        façadeCacheHits:
+        facadeCacheHits:
             0,
 
         requirementChecks:
@@ -621,19 +642,19 @@
         }
 
         if (
-            façadeCache.has(
+            facadeCache.has(
                 helper
             )
         ) {
-            metrics.façadeCacheHits +=
+            metrics.facadeCacheHits +=
                 1;
 
-            return façadeCache.get(
+            return facadeCache.get(
                 helper
             );
         }
 
-        metrics.façadeCreations +=
+        metrics.facadeCreations +=
             1;
 
         const descriptor =
@@ -641,7 +662,7 @@
                 helper
             );
 
-        const façade =
+        const facade =
             Object.freeze({
                 id:
                     helper.id,
@@ -749,12 +770,12 @@
                 },
             });
 
-        façadeCache.set(
+        facadeCache.set(
             helper,
-            façade
+            facade
         );
 
-        return façade;
+        return facade;
     }
 
     function get(
@@ -852,6 +873,11 @@
             dependencySource:
                 "TACTIC.use",
 
+            dependencyRegistered:
+                TACTIC.dependencies.has(
+                    "pageapi"
+                ),
+
             loadedAt:
                 metrics.loadedAt,
 
@@ -895,8 +921,10 @@
         Object.freeze({
             current,
             get,
+
             require:
                 requirePage,
+
             list,
             inspect,
 
@@ -904,12 +932,20 @@
                 CAPABILITIES,
         });
 
+    /*
+     * Publish the service before registering the resolver.
+     */
     TACTIC.services.pageApi =
         pageApi;
 
+    /*
+     * Dependency Registry entries require resolver functions.
+     * The resolver returns the existing immutable Page API.
+     */
     TACTIC.dependencies.register(
         "pageapi",
-        pageApi,
+        () =>
+            pageApi,
         {
             replace:
                 true,
@@ -929,7 +965,10 @@
             },
         }
     );
-    
+
+    /*
+     * Optional readable alias. Both names resolve to the same API.
+     */
     TACTIC.dependencies.alias(
         "page-api",
         "pageapi",
@@ -939,6 +978,9 @@
         }
     );
 
+    /*
+     * Expose the high-level convenience API at TACTIC.page.
+     */
     try {
         Object.defineProperty(
             TACTIC,
@@ -969,14 +1011,48 @@
     /*
      * Convenience alias beneath the existing DOM service.
      */
-    dom.currentPage =
-        current;
+    try {
+        Object.defineProperty(
+            dom,
+            "currentPage",
+            {
+                configurable:
+                    true,
+
+                enumerable:
+                    true,
+
+                writable:
+                    false,
+
+                value:
+                    current,
+            }
+        );
+    } catch (error) {
+        logger?.warn(
+            "Page API could not expose dom.currentPage",
+            {
+                error,
+            }
+        );
+    }
 
     logger?.info(
         "Page API loaded",
         {
             dependencySource:
                 "TACTIC.use",
+
+            dependencyRegistered:
+                TACTIC.dependencies.has(
+                    "pageapi"
+                ),
+
+            aliases: [
+                "pageapi",
+                "page-api",
+            ],
 
             helperCount:
                 pages
