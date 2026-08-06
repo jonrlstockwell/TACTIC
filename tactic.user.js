@@ -18,6 +18,7 @@
 
 // Namespace must load before every other TACTIC file.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/dependencies.js?v=1
 
 // Shared framework definitions.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=1
