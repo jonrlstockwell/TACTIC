@@ -77,14 +77,41 @@
     const ACTION_ID =
         "deposit.prepare";
 
-    const settings =
-        TACTIC.protection.settings;
+    if (
+        typeof TACTIC.use !==
+        "function"
+    ) {
+        console.error(
+            "[TACTIC Protection] Dependency Registry is unavailable."
+        );
 
-    const rules =
-        TACTIC.protection.rules;
+        return;
+    }
 
-    const userRepository =
-        TACTIC.repositories?.user;
+    let dependencies;
+
+    try {
+        dependencies =
+            TACTIC.use([
+                "actions",
+                "capabilities",
+                "deposit",
+                "drawer",
+                "logger",
+                "events",
+                "notifications",
+                "health",
+                "user",
+                "protection",
+            ]);
+    } catch (error) {
+        console.error(
+            "[TACTIC Protection] Required dependencies are unavailable.",
+            error
+        );
+
+        return;
+    }
 
     const {
         actions,
@@ -95,35 +122,25 @@
         events,
         notifications,
         health,
-    } = TACTIC.services;
 
-    if (!settings) {
+        user:
+            userRepository,
+
+        protection,
+    } = dependencies;
+
+    const settings =
+        protection.settings;
+
+    const rules =
+        protection.rules;
+
+    if (
+        !settings ||
+        !rules
+    ) {
         console.error(
-            "[TACTIC Protection] Protection settings are unavailable."
-        );
-
-        return;
-    }
-
-    if (!rules) {
-        console.error(
-            "[TACTIC Protection] Protection rules are unavailable."
-        );
-
-        return;
-    }
-
-    if (!userRepository) {
-        console.error(
-            "[TACTIC Protection] User Repository is unavailable."
-        );
-
-        return;
-    }
-
-    if (!actions) {
-        console.error(
-            "[TACTIC Protection] Action service is unavailable."
+            "[TACTIC Protection] Protection settings or rules are unavailable."
         );
 
         return;
@@ -631,7 +648,7 @@
         return button;
     }
 
-    function createSectionHeading(
+        function createSectionHeading(
         text
     ) {
         return createElement(
@@ -1283,7 +1300,7 @@
         }
     }
 
-    function render(
+        function render(
         container
     ) {
         metrics.renders +=
@@ -1677,6 +1694,41 @@
         return {
             module:
                 MODULE_ID,
+
+            dependencySource:
+                "TACTIC.use",
+
+            dependencies: {
+                actions:
+                    Boolean(actions),
+
+                capabilities:
+                    Boolean(capabilities),
+
+                deposit:
+                    Boolean(deposit),
+
+                drawer:
+                    Boolean(drawer),
+
+                logger:
+                    Boolean(logger),
+
+                events:
+                    Boolean(events),
+
+                notifications:
+                    Boolean(notifications),
+
+                health:
+                    Boolean(health),
+
+                user:
+                    Boolean(userRepository),
+
+                protection:
+                    Boolean(protection),
+            },
 
             initialized:
                 metrics.initializedAt !==

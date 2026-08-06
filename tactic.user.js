@@ -141,7 +141,7 @@
 
 // Protection application requires settings, rules, User Repository,
 // Actions, Deposit Service, notifications, and the drawer.
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=3
 
 // ============================================================
 // DEVELOPER DASHBOARD
