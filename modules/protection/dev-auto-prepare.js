@@ -24,7 +24,7 @@
  * - Protection must be enabled
  * - Destination must be explicitly allowlisted
  * - Deposit preparation must succeed first
- * - Submit control must be enabled and labeled DEPOSIT
+ * - Submit control must be enabled and have an approved label
  * - Confirmation controls are never clicked
  *
  * ============================================================
@@ -131,6 +131,14 @@
             new Set([
                 "faction-bank",
                 "personal-vault",
+            ])
+        );
+
+    const ALLOWED_SUBMIT_LABELS =
+        Object.freeze(
+            new Set([
+                "DEPOSIT",
+                "DEPOSIT MONEY",
             ])
         );
 
@@ -253,6 +261,33 @@
         };
     }
 
+    function cloneValue(
+        value
+    ) {
+        if (
+            value === null ||
+            value === undefined
+        ) {
+            return value;
+        }
+
+        try {
+            return structuredClone(
+                value
+            );
+        } catch {
+            try {
+                return JSON.parse(
+                    JSON.stringify(
+                        value
+                    )
+                );
+            } catch {
+                return value;
+            }
+        }
+    }
+
     function createAttemptKey(
         destination,
         amount
@@ -278,6 +313,21 @@
         }
 
         return amount;
+    }
+
+    function normalizeLabel(
+        value
+    ) {
+        return String(
+            value ||
+            ""
+        )
+            .replace(
+                /\s+/g,
+                " "
+            )
+            .trim()
+            .toUpperCase();
     }
 
     function getPreparedResult(
@@ -337,22 +387,86 @@
         );
     }
 
-    function verifySubmitControl(
-        control
+    function resolveClickableControl(
+        originalControl
     ) {
         if (
-            !control ||
+            !originalControl ||
             !(
-                control instanceof
+                originalControl instanceof
                 HTMLElement
             )
         ) {
+            return null;
+        }
+
+        if (
+            originalControl.matches(
+                "button, input[type='submit'], input[type='button']"
+            )
+        ) {
+            return originalControl;
+        }
+
+        return originalControl.querySelector(
+            "button, input[type='submit'], input[type='button']"
+        );
+    }
+
+    function readControlLabel(
+        control
+    ) {
+        if (
+            control instanceof
+                HTMLInputElement
+        ) {
+            return normalizeLabel(
+                control.value
+            );
+        }
+
+        return normalizeLabel(
+            control.textContent ||
+            control.getAttribute(
+                "aria-label"
+            ) ||
+            control.getAttribute(
+                "title"
+            ) ||
+            ""
+        );
+    }
+
+    function verifySubmitControl(
+        originalControl
+    ) {
+        const control =
+            resolveClickableControl(
+                originalControl
+            );
+
+        if (!control) {
             return {
                 valid:
                     false,
 
                 reason:
                     "submit-control-unavailable",
+
+                control:
+                    null,
+            };
+        }
+
+        if (!control.isConnected) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "submit-control-disconnected",
+
+                control,
             };
         }
 
@@ -363,6 +477,8 @@
 
                 reason:
                     "submit-control-not-visible",
+
+                control,
             };
         }
 
@@ -385,22 +501,21 @@
 
                 reason:
                     "submit-control-disabled",
+
+                control,
             };
         }
 
         const label =
-            String(
-                control.value ||
-                control.textContent ||
-                control.getAttribute(
-                    "aria-label"
-                ) ||
-                ""
-            )
-                .trim()
-                .toUpperCase();
+            readControlLabel(
+                control
+            );
 
-        if (label !== "DEPOSIT") {
+        if (
+            !ALLOWED_SUBMIT_LABELS.has(
+                label
+            )
+        ) {
             return {
                 valid:
                     false,
@@ -409,6 +524,12 @@
                     "unexpected-submit-label",
 
                 label,
+
+                allowedLabels: [
+                    ...ALLOWED_SUBMIT_LABELS,
+                ],
+
+                control,
             };
         }
 
@@ -420,6 +541,8 @@
                 "verified",
 
             label,
+
+            control,
         };
     }
 
@@ -488,12 +611,12 @@
             };
         }
 
-        const control =
+        const locatedControl =
             await page.submit.locate();
 
         const verification =
             verifySubmitControl(
-                control
+                locatedControl
             );
 
         if (!verification.valid) {
@@ -507,18 +630,84 @@
                 reason:
                     verification.reason,
 
-                verification,
+                verification: {
+                    valid:
+                        verification.valid,
+
+                    reason:
+                        verification.reason,
+
+                    label:
+                        verification.label ||
+                        null,
+
+                    allowedLabels:
+                        verification
+                            .allowedLabels ||
+                        [
+                            ...ALLOWED_SUBMIT_LABELS,
+                        ],
+                },
             };
         }
 
+        const verifiedControl =
+            verification.control;
+
         metrics.submissionAttempts +=
             1;
+
+        verifiedControl.focus();
+
+        const form =
+            verifiedControl.closest(
+                "form"
+            );
 
         /*
          * This is the only automatic transaction action.
          * No confirmation control is searched for or clicked.
          */
-        control.click();
+        HTMLElement.prototype.click.call(
+            verifiedControl
+        );
+
+        /*
+         * Some Torn controls may rely on a form submit event.
+         * Retry with requestSubmit only if the original control
+         * and form remain connected after the click.
+         */
+        if (
+            form &&
+            typeof form.requestSubmit ===
+                "function"
+        ) {
+            globalThis.setTimeout(
+                () => {
+                    if (
+                        verifiedControl
+                            .isConnected &&
+                        form.isConnected
+                    ) {
+                        try {
+                            form.requestSubmit(
+                                verifiedControl
+                            );
+                        } catch (error) {
+                            logger?.warn(
+                                "Developer auto-deposit requestSubmit fallback failed",
+                                {
+                                    destination,
+                                    amount,
+                                    error,
+                                }
+                            );
+                        }
+                    }
+                },
+                150
+            );
+        }
 
         lastSubmissionAt =
             Date.now();
@@ -543,8 +732,11 @@
 
             amount,
 
+            submitLabel:
+                verification.label,
+
             reason:
-                "deposit-clicked",
+                "deposit-submission-triggered",
 
             clickedAt:
                 lastSubmissionAt,
@@ -703,7 +895,9 @@
                 );
 
             metrics.lastPreparationResult =
-                preparationResult;
+                cloneValue(
+                    preparationResult
+                );
 
             if (
                 preparationResult
@@ -717,8 +911,8 @@
                     1;
 
                 /*
-                 * Allow the resumed page preparation to be picked
-                 * up quickly after navigation.
+                 * Clear the duplicate key so the next page check
+                 * can complete submission after navigation.
                  */
                 lastAttemptKey =
                     null;
@@ -756,7 +950,9 @@
                 });
 
             metrics.lastSubmissionResult =
-                submissionResult;
+                cloneValue(
+                    submissionResult
+                );
 
             if (
                 submissionResult
@@ -772,7 +968,7 @@
                 return submissionResult;
             }
 
-            notifications?.success(
+            notifications?.success?.(
                 `${amount.toLocaleString()} deposited into ${destination}.`,
                 {
                     title:
@@ -802,7 +998,21 @@
                 }
             );
 
-            return null;
+            return {
+                success:
+                    false,
+
+                submitted:
+                    false,
+
+                reason:
+                    "auto-deposit-threw",
+
+                error:
+                    createErrorSnapshot(
+                        error
+                    ),
+            };
         } finally {
             running =
                 false;
@@ -873,6 +1083,19 @@
         return true;
     }
 
+    function resetDuplicateProtection() {
+        lastAttemptKey =
+            null;
+
+        lastAttemptAt =
+            0;
+
+        lastSubmissionAt =
+            0;
+
+        return true;
+    }
+
     function inspect() {
         return {
             service:
@@ -887,6 +1110,10 @@
 
             allowedDestinations: [
                 ...ALLOWED_DESTINATIONS,
+            ],
+
+            allowedSubmitLabels: [
+                ...ALLOWED_SUBMIT_LABELS,
             ],
 
             checkIntervalMs:
@@ -908,7 +1135,7 @@
                 verifiedDestinationsOnly:
                     true,
 
-                exactSubmitLabelRequired:
+                approvedSubmitLabelRequired:
                     true,
 
                 automaticNavigation:
@@ -926,6 +1153,26 @@
 
             metrics: {
                 ...metrics,
+
+                lastPreparationResult:
+                    cloneValue(
+                        metrics
+                            .lastPreparationResult
+                    ),
+
+                lastSubmissionResult:
+                    cloneValue(
+                        metrics
+                            .lastSubmissionResult
+                    ),
+
+                lastError:
+                    metrics.lastError
+                        ? {
+                              ...metrics
+                                  .lastError,
+                          }
+                        : null,
             },
         };
     }
@@ -936,14 +1183,14 @@
             stop,
             check,
             inspect,
+            resetDuplicateProtection,
         });
 
     TACTIC.protection.devAutoDeposit =
         api;
 
     /*
-     * Retain the previous property name temporarily so existing
-     * console commands do not break.
+     * Temporary compatibility alias for earlier developer builds.
      */
     TACTIC.protection.devAutoPrepare =
         api;
@@ -955,6 +1202,10 @@
         {
             allowedDestinations: [
                 ...ALLOWED_DESTINATIONS,
+            ],
+
+            allowedSubmitLabels: [
+                ...ALLOWED_SUBMIT_LABELS,
             ],
 
             automaticSubmission:
