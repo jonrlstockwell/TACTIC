@@ -124,7 +124,7 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=4
 
 // Register the public deposit.prepare Action.
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=2
 
 // ============================================================
 // PROTECTION APPLICATION

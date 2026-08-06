@@ -21,9 +21,11 @@
  * - Never submits or confirms the deposit
  *
  * Dependencies:
+ * - core/dependencies.js
  * - services/actions/index.js
  * - services/deposit/index.js
  * - services/capabilities/index.js
+ * - core/logger.js
  *
  * ============================================================
  */
@@ -42,27 +44,40 @@
         return;
     }
 
+    if (
+        typeof TACTIC.use !==
+        "function"
+    ) {
+        console.error(
+            "[TACTIC Deposit Actions] Dependency Registry is unavailable."
+        );
+
+        return;
+    }
+
+    let dependencies;
+
+    try {
+        dependencies =
+            TACTIC.use([
+                "actions",
+                "deposit",
+                "logger",
+            ]);
+    } catch (error) {
+        console.error(
+            "[TACTIC Deposit Actions] Required dependencies are unavailable.",
+            error
+        );
+
+        return;
+    }
+
     const {
         actions,
         deposit,
         logger,
-    } = TACTIC.services;
-
-    if (!actions) {
-        console.error(
-            "[TACTIC Deposit Actions] Action service is unavailable."
-        );
-
-        return;
-    }
-
-    if (!deposit) {
-        console.error(
-            "[TACTIC Deposit Actions] Deposit service is unavailable."
-        );
-
-        return;
-    }
+    } = dependencies;
 
     function normalizeAmount(
         value
@@ -214,6 +229,9 @@
 
                 confirmsTransaction:
                     false,
+
+                dependencySource:
+                    "TACTIC.use",
             },
         },
         {
@@ -222,12 +240,15 @@
         }
     );
 
-    logger?.info(
+    logger.info(
         "Deposit actions registered",
         {
             actions: [
                 "deposit.prepare",
             ],
+
+            dependencySource:
+                "TACTIC.use",
         }
     );
 })();
