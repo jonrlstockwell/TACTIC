@@ -9,15 +9,26 @@
 // @run-at       document-start
 
 // ============================================================
-// CORE
+// CORE FRAMEWORK
 // ============================================================
 
+// Namespace must load before every other TACTIC file.
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
+
+// Shared framework definitions.
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=1
+
+// Core infrastructure.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/logger.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/modules.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/settings.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/actions.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/workflows.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/errors.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/lifecycle.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/utilities.js?v=1
 
 // ============================================================
 // REPOSITORIES
@@ -29,14 +40,17 @@
 // DOM AND SELECTOR SERVICES
 // ============================================================
 
+// Base DOM and selector services.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=3
 
+// DOM page subsystem and registered helpers.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
 
+// DOM navigation-change detection.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/navigation.js?v=2
 
 // ============================================================
@@ -49,6 +63,7 @@
 // DEPOSIT SERVICES
 // ============================================================
 
+// Destination definitions must load before the Deposit Service.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=5
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=4
 
@@ -56,6 +71,8 @@
 // PROTECTION APPLICATION
 // ============================================================
 
+// Protection settings and rules must load before the workflow
+// and application module.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/settings.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/rules.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/protection.js?v=1
@@ -66,8 +83,10 @@
 // Developer build only.
 // ============================================================
 
+// Dashboard registry.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/dashboard.js?v=3
 
+// Dashboard sections.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/framework.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/runtime.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/services.js?v=2
@@ -80,6 +99,7 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/actions.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/workflows.js?v=2
 
+// Dashboard application and live refresh.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/index.js?v=5
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/live-refresh.js?v=3
 
@@ -88,7 +108,10 @@
 (() => {
     "use strict";
 
-    if (!globalThis.TACTIC) {
+    const TACTIC =
+        globalThis.TACTIC;
+
+    if (!TACTIC) {
         console.error(
             "[TACTIC Loader] Namespace was not loaded."
         );
@@ -111,10 +134,15 @@
             unsafeWindow,
             "TACTIC_DEV",
             {
-                configurable: true,
-                enumerable: false,
+                configurable:
+                    true,
+
+                enumerable:
+                    false,
+
                 get() {
-                    return globalThis.TACTIC;
+                    return globalThis
+                        .TACTIC;
                 },
             }
         );
@@ -131,6 +159,6 @@
 
     console.log(
         "[TACTIC Loader] Loader executed",
-        globalThis.TACTIC
+        TACTIC
     );
 })();
