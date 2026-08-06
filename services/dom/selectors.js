@@ -157,6 +157,21 @@
                     "#tab\\=armoury\\&sub\\=donate div.cash.left form input.wai-btn",
             },
 
+            VAULT: {
+                /*
+                 * Verified Personal Vault deposit controls.
+                 *
+                 * The deposit amount field is distinguished from the
+                 * withdrawal field by its data-deposit and data-max
+                 * attributes.
+                 */
+                DEPOSIT_AMOUNT:
+                    'input.input-money[data-deposit][data-max]',
+
+                DEPOSIT_BUTTON:
+                    'input[type="submit"].torn-btn[value="DEPOSIT"]',
+            },
+
             DIALOG: {
                 /*
                  * Generic Torn dialog containers. Applications
@@ -462,7 +477,7 @@
 
                 role:
                     "amount-input",
-
+                
                 publicAction:
                     "fill",
             },
@@ -546,6 +561,87 @@
 
                 role:
                     "preset-controls",
+            },
+        },
+
+        {
+            key:
+                "VAULT.DEPOSIT_AMOUNT",
+
+            selector:
+                SELECTORS
+                    .VAULT
+                    .DEPOSIT_AMOUNT,
+
+            description:
+                "The Personal Vault deposit amount field.",
+
+            pageId:
+                "properties",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "personal-vault",
+
+                destination:
+                    "personal-vault",
+
+                role:
+                    "amount-input",
+
+                publicAction:
+                    "fill",
+            },
+        },
+
+        {
+            key:
+                "VAULT.DEPOSIT_BUTTON",
+
+            selector:
+                SELECTORS
+                    .VAULT
+                    .DEPOSIT_BUTTON,
+
+            description:
+                "The Personal Vault deposit submission button.",
+
+            pageId:
+                "properties",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "personal-vault",
+
+                destination:
+                    "personal-vault",
+
+                role:
+                    "submit-control",
+
+                publicAction:
+                    "highlight-only",
+
+                submissionRestricted:
+                    true,
             },
         },
 
