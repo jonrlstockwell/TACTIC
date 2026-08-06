@@ -14,10 +14,13 @@
  * Current Domains:
  * - Wallet
  * - Investment Bank
+ * - Faction Vault
  *
  * Responsibilities:
  * - Observe and publish the player's wallet
  * - Read Investment Bank data through its registered DOM helper
+ * - Read the player's personal Faction Vault balance
+ * - Preserve verified page-specific financial data in storage
  * - Publish normalized financial state
  * - Calculate live Investment Bank comparisons
  * - Generate strategy-based investment recommendations
@@ -35,6 +38,8 @@
  * - refreshWallet()
  * - getInvestmentBank()
  * - refreshInvestmentBank()
+ * - getFactionVault()
+ * - refreshFactionVault()
  * - setInvestmentStrategy()
  * - getInvestmentStrategy()
  * - subscribe()
@@ -47,6 +52,7 @@
  * Shared State:
  * - finance.wallet
  * - finance.investmentBank
+ * - finance.factionVault
  *
  * ============================================================
  */
@@ -136,6 +142,12 @@
     const BANK_HELPER_ID =
         "investment-bank";
 
+    const FACTION_VAULT_HELPER_ID =
+        "faction-bank";
+
+    const FACTION_VAULT_ROOT_SELECTOR =
+        "#tab\\=armoury\\&sub\\=donate";
+
     const BANK_CACHE_STORAGE_KEY =
         "finance:investment-bank-cache";
 
@@ -143,6 +155,19 @@
         1;
 
     const BANK_RATE_CACHE_MAX_AGE_MS =
+        24 *
+        60 *
+        60 *
+        1_000;
+
+    const FACTION_VAULT_CACHE_STORAGE_KEY =
+        "finance:faction-vault-cache";
+
+    const FACTION_VAULT_CACHE_VERSION =
+        1;
+
+    const FACTION_VAULT_CACHE_MAX_AGE_MS =
+        7 *
         24 *
         60 *
         60 *
@@ -159,6 +184,9 @@
     const BANK_REFRESH_DEBOUNCE_MS =
         350;
 
+    const FACTION_VAULT_REFRESH_DEBOUNCE_MS =
+        350;
+
     const DATA_KEYS =
         Object.freeze({
             WALLET:
@@ -166,6 +194,9 @@
 
             INVESTMENT_BANK:
                 "investmentBank",
+
+            FACTION_VAULT:
+                "factionVault",
         });
 
     const STATE_KEYS =
@@ -175,6 +206,9 @@
 
             INVESTMENT_BANK:
                 "finance.investmentBank",
+
+            FACTION_VAULT:
+                "finance.factionVault",
         });
 
     const EVENT_NAMES =
@@ -184,6 +218,9 @@
 
             INVESTMENT_BANK_CHANGED:
                 "finance:investment-bank-changed",
+
+            FACTION_VAULT_CHANGED:
+                "finance:faction-vault-changed",
 
             INVESTMENT_STRATEGY_CHANGED:
                 "finance:investment-strategy-changed",
@@ -197,6 +234,10 @@
             ],
             [
                 DATA_KEYS.INVESTMENT_BANK,
+                new Set(),
+            ],
+            [
+                DATA_KEYS.FACTION_VAULT,
                 new Set(),
             ],
         ]);
@@ -215,6 +256,9 @@
             null,
 
         investmentBank:
+            null,
+
+        factionVault:
             null,
 
         investmentStrategy:
@@ -282,6 +326,39 @@
         bankRecommendationFailures:
             0,
 
+        factionVaultReads:
+            0,
+
+        factionVaultRefreshes:
+            0,
+
+        factionVaultChanges:
+            0,
+
+        factionVaultNoChanges:
+            0,
+
+        factionVaultUnavailableReads:
+            0,
+
+        factionVaultCacheReads:
+            0,
+
+        factionVaultCacheHits:
+            0,
+
+        factionVaultCacheMisses:
+            0,
+
+        factionVaultCacheWrites:
+            0,
+
+        factionVaultCacheWriteFailures:
+            0,
+
+        factionVaultCacheReadFailures:
+            0,
+
         strategyChanges:
             0,
 
@@ -318,6 +395,18 @@
         lastRecommendationAt:
             null,
 
+        lastFactionVaultReadAt:
+            null,
+
+        lastFactionVaultChangeAt:
+            null,
+
+        lastFactionVaultCacheReadAt:
+            null,
+
+        lastFactionVaultCacheWriteAt:
+            null,
+
         lastStrategyChangeAt:
             null,
 
@@ -332,6 +421,12 @@
         null;
 
     let bankRefreshTimerId =
+        null;
+
+    let factionVaultMutationObserver =
+        null;
+
+    let factionVaultRefreshTimerId =
         null;
 
     function cloneValue(
@@ -422,6 +517,18 @@
                             .investmentBank
                             ?.available ===
                         true,
+
+                    factionVaultAvailable:
+                        repositoryState
+                            .factionVault
+                            ?.available ===
+                        true,
+
+                    factionVaultValue:
+                        repositoryState
+                            .factionVault
+                            ?.value ??
+                        null,
 
                     investmentStrategy:
                         repositoryState
@@ -926,6 +1033,577 @@
         return createCachedBankSnapshot(
             record,
             reason
+        );
+    }
+
+    function getFactionVaultHelper() {
+        return (
+            dom.pages
+                ?.getHelper?.(
+                    FACTION_VAULT_HELPER_ID
+                ) ||
+            null
+        );
+    }
+
+    function createFactionVaultCacheRecord(
+        snapshot
+    ) {
+        return {
+            version:
+                FACTION_VAULT_CACHE_VERSION,
+
+            savedAt:
+                Date.now(),
+
+            lastLiveReadAt:
+                snapshot
+                    ?.lastLiveReadAt ||
+                snapshot
+                    ?.updatedAt ||
+                Date.now(),
+
+            snapshot:
+                cloneValue(
+                    snapshot
+                ),
+        };
+    }
+
+    function saveFactionVaultCache(
+        snapshot
+    ) {
+        if (
+            !storage ||
+            typeof storage.set !==
+                "function" ||
+            !snapshot ||
+            snapshot.live !==
+                true ||
+            snapshot.verified !==
+                true
+        ) {
+            return false;
+        }
+
+        try {
+            storage.set(
+                FACTION_VAULT_CACHE_STORAGE_KEY,
+                createFactionVaultCacheRecord(
+                    snapshot
+                )
+            );
+
+            metrics.factionVaultCacheWrites +=
+                1;
+
+            metrics.lastFactionVaultCacheWriteAt =
+                Date.now();
+
+            return true;
+        } catch (error) {
+            metrics
+                .factionVaultCacheWriteFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not save the Faction Vault cache",
+                {
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
+    function readFactionVaultCacheRecord() {
+        metrics.factionVaultCacheReads +=
+            1;
+
+        metrics.lastFactionVaultCacheReadAt =
+            Date.now();
+
+        if (
+            !storage ||
+            typeof storage.get !==
+                "function"
+        ) {
+            metrics.factionVaultCacheMisses +=
+                1;
+
+            return null;
+        }
+
+        try {
+            const record =
+                storage.get(
+                    FACTION_VAULT_CACHE_STORAGE_KEY,
+                    null
+                );
+
+            if (
+                !record ||
+                typeof record !==
+                    "object" ||
+                record.version !==
+                    FACTION_VAULT_CACHE_VERSION ||
+                !record.snapshot
+            ) {
+                metrics.factionVaultCacheMisses +=
+                    1;
+
+                return null;
+            }
+
+            metrics.factionVaultCacheHits +=
+                1;
+
+            return cloneValue(
+                record
+            );
+        } catch (error) {
+            metrics
+                .factionVaultCacheReadFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Faction Vault cache",
+                {
+                    error,
+                }
+            );
+
+            return null;
+        }
+    }
+
+    function createCachedFactionVaultSnapshot(
+        record,
+        reason
+    ) {
+        if (
+            !record ||
+            !record.snapshot
+        ) {
+            return null;
+        }
+
+        const cached =
+            cloneValue(
+                record.snapshot
+            );
+
+        const now =
+            Date.now();
+
+        const lastLiveReadAt =
+            record.lastLiveReadAt ||
+            cached.lastLiveReadAt ||
+            cached.updatedAt ||
+            record.savedAt ||
+            null;
+
+        const cacheAgeMs =
+            Number.isFinite(
+                lastLiveReadAt
+            )
+                ? Math.max(
+                      0,
+                      now -
+                          lastLiveReadAt
+                  )
+                : null;
+
+        cached.available =
+            Number.isFinite(
+                cached.value
+            );
+
+        cached.verified =
+            cached.available;
+
+        cached.ready =
+            false;
+
+        cached.live =
+            false;
+
+        cached.cached =
+            true;
+
+        cached.stale =
+            Number.isFinite(
+                cacheAgeMs
+            )
+                ? cacheAgeMs >
+                  FACTION_VAULT_CACHE_MAX_AGE_MS
+                : true;
+
+        cached.reason =
+            reason;
+
+        cached.source =
+            "repository:finance-persistent-cache";
+
+        cached.cachedAt =
+            record.savedAt ||
+            now;
+
+        cached.lastLiveReadAt =
+            lastLiveReadAt;
+
+        cached.cacheAgeMs =
+            cacheAgeMs;
+
+        cached.updatedAt =
+            now;
+
+        return cached;
+    }
+
+    function loadFactionVaultCache(
+        reason =
+            "persistent-cache"
+    ) {
+        const record =
+            readFactionVaultCacheRecord();
+
+        if (!record) {
+            return null;
+        }
+
+        return createCachedFactionVaultSnapshot(
+            record,
+            reason
+        );
+    }
+
+    function createUnavailableFactionVaultSnapshot(
+        reason
+    ) {
+        const previous =
+            repositoryState
+                .factionVault;
+
+        if (
+            previous &&
+            Number.isFinite(
+                previous.value
+            )
+        ) {
+            const cached =
+                createCachedFactionVaultSnapshot(
+                    {
+                        version:
+                            FACTION_VAULT_CACHE_VERSION,
+
+                        savedAt:
+                            previous.cachedAt ||
+                            previous.updatedAt ||
+                            Date.now(),
+
+                        lastLiveReadAt:
+                            previous.lastLiveReadAt ||
+                            previous.updatedAt ||
+                            null,
+
+                        snapshot:
+                            previous,
+                    },
+                    reason
+                );
+
+            if (cached) {
+                return cached;
+            }
+        }
+
+        const persisted =
+            loadFactionVaultCache(
+                reason
+            );
+
+        if (persisted) {
+            return persisted;
+        }
+
+        return {
+            type:
+                DATA_KEYS
+                    .FACTION_VAULT,
+
+            id:
+                "faction-vault",
+
+            name:
+                "Faction Vault",
+
+            ownership:
+                "personal",
+
+            value:
+                null,
+
+            available:
+                false,
+
+            verified:
+                false,
+
+            ready:
+                false,
+
+            live:
+                false,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                false,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "request-dependent",
+
+            access: {
+                canDeposit:
+                    false,
+
+                canSelfWithdraw:
+                    false,
+
+                canRequestWithdrawal:
+                    false,
+
+                requiresFactionBanker:
+                    true,
+
+                requiresAuthorizedFactionMember:
+                    true,
+
+                transferDelayPossible:
+                    true,
+
+                timing:
+                    "variable",
+            },
+
+            funding: {
+                usableForRecommendations:
+                    false,
+
+                affordabilityClass:
+                    "unavailable",
+
+                transferRequired:
+                    true,
+            },
+
+            reason,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function createFactionVaultSnapshot(
+        helperSnapshot,
+        reason
+    ) {
+        const balanceValue =
+            helperSnapshot
+                ?.balance
+                ?.value;
+
+        const available =
+            Number.isFinite(
+                balanceValue
+            ) &&
+            helperSnapshot
+                ?.balance
+                ?.available ===
+            true;
+
+        return {
+            type:
+                DATA_KEYS
+                    .FACTION_VAULT,
+
+            id:
+                "faction-vault",
+
+            name:
+                "Faction Vault",
+
+            ownership:
+                "personal",
+
+            value:
+                available
+                    ? balanceValue
+                    : null,
+
+            raw:
+                helperSnapshot
+                    ?.balance
+                    ?.raw ||
+                "",
+
+            available,
+
+            verified:
+                available &&
+                helperSnapshot
+                    ?.balance
+                    ?.verified ===
+                true,
+
+            ready:
+                available,
+
+            live:
+                available,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                available,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "request-dependent",
+
+            access:
+                cloneValue(
+                    helperSnapshot
+                        ?.access ||
+                    {
+                        canDeposit:
+                            false,
+
+                        canSelfWithdraw:
+                            false,
+
+                        canRequestWithdrawal:
+                            available,
+
+                        requiresFactionBanker:
+                            true,
+
+                        timing:
+                            "variable",
+                    }
+                ),
+
+            accessCost:
+                cloneValue(
+                    helperSnapshot
+                        ?.accessCost ||
+                    {
+                        timeMinutes:
+                            null,
+
+                        timeKnown:
+                            false,
+
+                        risk:
+                            "low",
+
+                        dependencies: [
+                            "authorized-faction-member",
+                            "faction-banker-availability",
+                        ],
+                    }
+                ),
+
+            funding:
+                cloneValue(
+                    helperSnapshot
+                        ?.funding ||
+                    {
+                        usableForRecommendations:
+                            available,
+
+                        affordabilityClass:
+                            available
+                                ? "affordable-after-transfer"
+                                : "unavailable",
+
+                        transferRequired:
+                            true,
+                    }
+                ),
+
+            helperSnapshot:
+                cloneValue(
+                    helperSnapshot
+                ),
+
+            reason,
+
+            lastLiveReadAt:
+                available
+                    ? Date.now()
+                    : null,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function factionVaultSnapshotsEqual(
+        first,
+        second
+    ) {
+        if (
+            !first ||
+            !second
+        ) {
+            return false;
+        }
+
+        return (
+            first.value ===
+                second.value &&
+            first.available ===
+                second.available &&
+            first.verified ===
+                second.verified &&
+            first.live ===
+                second.live &&
+            first.cached ===
+                second.cached &&
+            first.stale ===
+                second.stale
         );
     }
 
@@ -1877,6 +2555,111 @@
         };
     }
 
+    function updateFactionVaultState(
+        factionVault,
+        reason,
+        forceNotify =
+            false
+    ) {
+        const previousFactionVault =
+            repositoryState
+                .factionVault;
+
+        const changed =
+            !factionVaultSnapshotsEqual(
+                previousFactionVault,
+                factionVault
+            );
+
+        repositoryState.factionVault =
+            factionVault;
+
+        publishState(
+            STATE_KEYS.FACTION_VAULT,
+            factionVault,
+            reason,
+            forceNotify
+        );
+
+        if (
+            !changed &&
+            !forceNotify
+        ) {
+            metrics.factionVaultNoChanges +=
+                1;
+
+            return {
+                changed:
+                    false,
+
+                factionVault:
+                    cloneValue(
+                        factionVault
+                    ),
+            };
+        }
+
+        metrics.factionVaultChanges +=
+            1;
+
+        metrics.lastFactionVaultChangeAt =
+            Date.now();
+
+        notifySubscribers(
+            DATA_KEYS.FACTION_VAULT,
+            factionVault,
+            previousFactionVault,
+            reason
+        );
+
+        events?.emit?.(
+            EVENT_NAMES.FACTION_VAULT_CHANGED,
+            {
+                factionVault:
+                    cloneValue(
+                        factionVault
+                    ),
+
+                previousFactionVault:
+                    cloneValue(
+                        previousFactionVault
+                    ),
+
+                reason,
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        recordActivity(
+            "faction-vault-changed",
+            {
+                available:
+                    factionVault.available,
+
+                value:
+                    factionVault.value,
+
+                live:
+                    factionVault.live,
+
+                cached:
+                    factionVault.cached,
+            }
+        );
+
+        return {
+            changed:
+                true,
+
+            factionVault:
+                cloneValue(
+                    factionVault
+                ),
+        };
+    }
+
     function readWalletFromDom(
         source =
             "dom-read"
@@ -2129,6 +2912,175 @@
         );
     }
 
+    function readFactionVault(
+        reason =
+            "manual-read"
+    ) {
+        metrics.factionVaultReads +=
+            1;
+
+        metrics.lastFactionVaultReadAt =
+            Date.now();
+
+        const helper =
+            getFactionVaultHelper();
+
+        if (
+            !helper ||
+            typeof helper.getFinancialSnapshot !==
+                "function"
+        ) {
+            metrics
+                .factionVaultUnavailableReads +=
+                1;
+
+            return createUnavailableFactionVaultSnapshot(
+                "faction-vault-helper-unavailable"
+            );
+        }
+
+        try {
+            const helperSnapshot =
+                helper.getFinancialSnapshot();
+
+            if (
+                helperSnapshot
+                    ?.balance
+                    ?.available !==
+                true ||
+                !Number.isFinite(
+                    helperSnapshot
+                        ?.balance
+                        ?.value
+                )
+            ) {
+                metrics
+                    .factionVaultUnavailableReads +=
+                    1;
+
+                return createUnavailableFactionVaultSnapshot(
+                    helperSnapshot
+                        ?.balance
+                        ?.reason ||
+                    "faction-vault-page-unavailable"
+                );
+            }
+
+            return createFactionVaultSnapshot(
+                helperSnapshot,
+                reason
+            );
+        } catch (error) {
+            metrics
+                .factionVaultUnavailableReads +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Faction Vault",
+                {
+                    error,
+                    reason,
+                }
+            );
+
+            return createUnavailableFactionVaultSnapshot(
+                "faction-vault-read-failed"
+            );
+        }
+    }
+
+    function getFactionVault(
+        options = {}
+    ) {
+        if (
+            options.refresh ===
+                true ||
+            repositoryState
+                .factionVault ===
+                null
+        ) {
+            refreshFactionVault(
+                options.reason ||
+                "get-faction-vault"
+            );
+        }
+
+        return cloneValue(
+            repositoryState
+                .factionVault
+        );
+    }
+
+    function refreshFactionVault(
+        reason =
+            "manual-refresh",
+        options = {}
+    ) {
+        metrics.factionVaultRefreshes +=
+            1;
+
+        const factionVault =
+            readFactionVault(
+                reason
+            );
+
+        if (
+            factionVault?.live ===
+                true &&
+            factionVault?.verified ===
+                true
+        ) {
+            saveFactionVaultCache(
+                factionVault
+            );
+        }
+
+        updateFactionVaultState(
+            factionVault,
+            reason,
+            options.forceNotify ===
+                true
+        );
+
+        return cloneValue(
+            factionVault
+        );
+    }
+
+    function scheduleFactionVaultRefresh(
+        reason =
+            "faction-vault-dom-change"
+    ) {
+        if (
+            factionVaultRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                factionVaultRefreshTimerId
+            );
+        }
+
+        factionVaultRefreshTimerId =
+            globalThis.setTimeout(
+                () => {
+                    factionVaultRefreshTimerId =
+                        null;
+
+                    refreshFactionVault(
+                        reason
+                    );
+                },
+                FACTION_VAULT_REFRESH_DEBOUNCE_MS
+            );
+
+        return true;
+    }
+
     function scheduleInvestmentBankRefresh(
         reason =
             "bank-dom-change"
@@ -2276,7 +3228,10 @@
                 DATA_KEYS.WALLET ||
             value ===
                 DATA_KEYS
-                    .INVESTMENT_BANK
+                    .INVESTMENT_BANK ||
+            value ===
+                DATA_KEYS
+                    .FACTION_VAULT
         ) {
             return value;
         }
@@ -2318,19 +3273,37 @@
             options.emitInitial ===
             true
         ) {
-            const value =
+            let value;
+
+            if (
                 normalizedKey ===
                 DATA_KEYS.WALLET
-                    ? getWallet({
-                          refresh:
-                              options.refresh ===
-                              true,
-                      })
-                    : getInvestmentBank({
-                          refresh:
-                              options.refresh ===
-                              true,
-                      });
+            ) {
+                value =
+                    getWallet({
+                        refresh:
+                            options.refresh ===
+                            true,
+                    });
+            } else if (
+                normalizedKey ===
+                DATA_KEYS
+                    .INVESTMENT_BANK
+            ) {
+                value =
+                    getInvestmentBank({
+                        refresh:
+                            options.refresh ===
+                            true,
+                    });
+            } else {
+                value =
+                    getFactionVault({
+                        refresh:
+                            options.refresh ===
+                            true,
+                    });
+            }
 
             callback({
                 key:
@@ -2541,6 +3514,69 @@
         return true;
     }
 
+    function startFactionVaultWatcher() {
+        if (
+            factionVaultMutationObserver
+        ) {
+            factionVaultMutationObserver
+                .disconnect();
+
+            factionVaultMutationObserver =
+                null;
+        }
+
+        const factionRoot =
+            document.querySelector(
+                FACTION_VAULT_ROOT_SELECTOR
+            );
+
+        if (!factionRoot) {
+            refreshFactionVault(
+                "faction-vault-watcher-root-unavailable"
+            );
+
+            return false;
+        }
+
+        factionVaultMutationObserver =
+            new MutationObserver(
+                () => {
+                    scheduleFactionVaultRefresh(
+                        "faction-vault-dom-mutation"
+                    );
+                }
+            );
+
+        factionVaultMutationObserver.observe(
+            factionRoot,
+            {
+                childList:
+                    true,
+
+                subtree:
+                    true,
+
+                characterData:
+                    true,
+
+                attributes:
+                    true,
+
+                attributeFilter: [
+                    "class",
+                    "disabled",
+                    "value",
+                ],
+            }
+        );
+
+        refreshFactionVault(
+            "faction-vault-watcher-initial"
+        );
+
+        return true;
+    }
+
     async function start() {
         if (
             repositoryState.started
@@ -2590,11 +3626,43 @@
             }
         }
 
+        /*
+         * Restore the most recently verified Faction Vault
+         * snapshot before attempting a live faction-page read.
+         */
+        if (
+            repositoryState
+                .factionVault ===
+            null
+        ) {
+            const cachedFactionVault =
+                loadFactionVaultCache(
+                    "repository-startup-cache"
+                );
+
+            if (cachedFactionVault) {
+                repositoryState
+                    .factionVault =
+                    cachedFactionVault;
+
+                publishState(
+                    STATE_KEYS
+                        .FACTION_VAULT,
+                    cachedFactionVault,
+                    "repository-startup-cache",
+                    true
+                );
+            }
+        }
+
         const walletWatcherActive =
             await startWalletWatcher();
 
         const bankWatcherActive =
             startInvestmentBankWatcher();
+
+        const factionVaultWatcherActive =
+            startFactionVaultWatcher();
 
         health?.markHealthy?.(
             REPOSITORY_NAME,
@@ -2606,6 +3674,8 @@
                     walletWatcherActive,
 
                     bankWatcherActive,
+
+                    factionVaultWatcherActive,
                 },
             }
         );
@@ -2616,6 +3686,8 @@
                 walletWatcherActive,
 
                 bankWatcherActive,
+
+                factionVaultWatcherActive,
             }
         );
 
@@ -2625,6 +3697,8 @@
                 walletWatcherActive,
 
                 bankWatcherActive,
+
+                factionVaultWatcherActive,
             }
         );
 
@@ -2653,6 +3727,16 @@
         }
 
         if (
+            factionVaultMutationObserver
+        ) {
+            factionVaultMutationObserver
+                .disconnect();
+
+            factionVaultMutationObserver =
+                null;
+        }
+
+        if (
             bankRefreshTimerId !==
             null
         ) {
@@ -2661,6 +3745,18 @@
             );
 
             bankRefreshTimerId =
+                null;
+        }
+
+        if (
+            factionVaultRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                factionVaultRefreshTimerId
+            );
+
+            factionVaultRefreshTimerId =
                 null;
         }
 
@@ -2707,6 +3803,13 @@
             )?.size ||
             0;
 
+        const factionVaultSubscribers =
+            subscribers.get(
+                DATA_KEYS
+                    .FACTION_VAULT
+            )?.size ||
+            0;
+
         return {
             repository:
                 "finance",
@@ -2745,11 +3848,17 @@
                         .investmentBank
                 ),
 
+            factionVault:
+                cloneValue(
+                    repositoryState
+                        .factionVault
+                ),
+
             investmentStrategy:
                 repositoryState
                     .investmentStrategy,
             
-            cache: {
+            investmentBankCache: {
                 storageKey:
                     BANK_CACHE_STORAGE_KEY,
 
@@ -2796,8 +3905,55 @@
                     true,
             },
 
+            factionVaultCache: {
+                storageKey:
+                    FACTION_VAULT_CACHE_STORAGE_KEY,
 
-            helper: {
+                version:
+                    FACTION_VAULT_CACHE_VERSION,
+
+                maxAgeMs:
+                    FACTION_VAULT_CACHE_MAX_AGE_MS,
+
+                snapshotCached:
+                    repositoryState
+                        .factionVault
+                        ?.cached ===
+                    true,
+
+                snapshotLive:
+                    repositoryState
+                        .factionVault
+                        ?.live ===
+                    true,
+
+                cachedAt:
+                    repositoryState
+                        .factionVault
+                        ?.cachedAt ||
+                    null,
+
+                lastLiveReadAt:
+                    repositoryState
+                        .factionVault
+                        ?.lastLiveReadAt ||
+                    null,
+
+                ageMs:
+                    repositoryState
+                        .factionVault
+                        ?.cacheAgeMs ??
+                    null,
+
+                stale:
+                    repositoryState
+                        .factionVault
+                        ?.stale ===
+                    true,
+            },
+
+
+            investmentBankHelper: {
                 id:
                     BANK_HELPER_ID,
 
@@ -2810,6 +3966,22 @@
                     getBankHelper()
                         ?.isReady?.()
                         ?.ready ===
+                    true,
+            },
+
+            factionVaultHelper: {
+                id:
+                    FACTION_VAULT_HELPER_ID,
+
+                available:
+                    Boolean(
+                        getFactionVaultHelper()
+                    ),
+
+                balanceReadable:
+                    getFactionVaultHelper()
+                        ?.getPersonalBalance?.()
+                        ?.available ===
                     true,
             },
 
@@ -2837,6 +4009,20 @@
                         Boolean(
                             document.querySelector(
                                 ".invest-wrap"
+                            )
+                        ),
+                },
+
+                factionVault: {
+                    active:
+                        Boolean(
+                            factionVaultMutationObserver
+                        ),
+
+                    rootPresent:
+                        Boolean(
+                            document.querySelector(
+                                FACTION_VAULT_ROOT_SELECTOR
                             )
                         ),
                 },
@@ -2877,6 +4063,25 @@
                                     .INVESTMENT_BANK
                             ),
                 },
+
+                factionVault: {
+                    key:
+                        STATE_KEYS
+                            .FACTION_VAULT,
+
+                    published:
+                        sharedState.has(
+                            STATE_KEYS
+                                .FACTION_VAULT
+                        ),
+
+                    revision:
+                        sharedState
+                            .getRevision(
+                                STATE_KEYS
+                                    .FACTION_VAULT
+                            ),
+                },
             },
 
             subscribers: {
@@ -2886,9 +4091,13 @@
                 investmentBank:
                     bankSubscribers,
 
+                factionVault:
+                    factionVaultSubscribers,
+
                 total:
                     walletSubscribers +
-                    bankSubscribers,
+                    bankSubscribers +
+                    factionVaultSubscribers,
             },
 
             metrics: {
@@ -2924,6 +4133,9 @@
 
             getInvestmentBank,
             refreshInvestmentBank,
+
+            getFactionVault,
+            refreshFactionVault,
 
             getInvestmentStrategy,
             setInvestmentStrategy,
@@ -3020,6 +4232,8 @@
                 DATA_KEYS.WALLET,
                 DATA_KEYS
                     .INVESTMENT_BANK,
+                DATA_KEYS
+                    .FACTION_VAULT,
             ],
 
             defaultInvestmentStrategy:
