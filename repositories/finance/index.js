@@ -83,6 +83,9 @@
     const health =
         services.health;
 
+    const storage =
+        services.storage;
+
     const financeEngine =
         services.finance;
 
@@ -132,6 +135,18 @@
 
     const BANK_HELPER_ID =
         "investment-bank";
+
+    const BANK_CACHE_STORAGE_KEY =
+        "finance:investment-bank-cache";
+
+    const BANK_CACHE_VERSION =
+        1;
+
+    const BANK_RATE_CACHE_MAX_AGE_MS =
+        24 *
+        60 *
+        60 *
+        1_000;
 
     const WALLET_SELECTOR_PATH =
         "USER.WALLET";
@@ -243,6 +258,24 @@
         bankUnavailableReads:
             0,
 
+        bankCacheReads:
+            0,
+
+        bankCacheHits:
+            0,
+
+        bankCacheMisses:
+            0,
+
+        bankCacheWrites:
+            0,
+
+        bankCacheWriteFailures:
+            0,
+
+        bankCacheReadFailures:
+            0,
+
         bankRecommendationCalculations:
             0,
 
@@ -274,6 +307,12 @@
             null,
 
         lastBankChangeAt:
+            null,
+
+        lastBankCacheReadAt:
+            null,
+
+        lastBankCacheWriteAt:
             null,
 
         lastRecommendationAt:
@@ -573,6 +612,323 @@
         );
     }
 
+    function createBankCacheRecord(
+        snapshot
+    ) {
+        return {
+            version:
+                BANK_CACHE_VERSION,
+
+            savedAt:
+                Date.now(),
+
+            lastLiveReadAt:
+                snapshot
+                    ?.lastLiveReadAt ||
+                snapshot
+                    ?.updatedAt ||
+                Date.now(),
+
+            snapshot:
+                cloneValue(
+                    snapshot
+                ),
+        };
+    }
+
+    function saveBankCache(
+        snapshot
+    ) {
+        if (
+            !storage ||
+            typeof storage.set !==
+                "function" ||
+            !snapshot ||
+            snapshot.live !==
+                true
+        ) {
+            return false;
+        }
+
+        try {
+            const record =
+                createBankCacheRecord(
+                    snapshot
+                );
+
+            storage.set(
+                BANK_CACHE_STORAGE_KEY,
+                record
+            );
+
+            metrics.bankCacheWrites +=
+                1;
+
+            metrics.lastBankCacheWriteAt =
+                Date.now();
+
+            return true;
+        } catch (error) {
+            metrics.bankCacheWriteFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not save the Investment Bank cache",
+                {
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
+    function readBankCacheRecord() {
+        metrics.bankCacheReads +=
+            1;
+
+        metrics.lastBankCacheReadAt =
+            Date.now();
+
+        if (
+            !storage ||
+            typeof storage.get !==
+                "function"
+        ) {
+            metrics.bankCacheMisses +=
+                1;
+
+            return null;
+        }
+
+        try {
+            const record =
+                storage.get(
+                    BANK_CACHE_STORAGE_KEY,
+                    null
+                );
+
+            if (
+                !record ||
+                typeof record !==
+                    "object" ||
+                record.version !==
+                    BANK_CACHE_VERSION ||
+                !record.snapshot
+            ) {
+                metrics.bankCacheMisses +=
+                    1;
+
+                return null;
+            }
+
+            metrics.bankCacheHits +=
+                1;
+
+            return cloneValue(
+                record
+            );
+        } catch (error) {
+            metrics.bankCacheReadFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Investment Bank cache",
+                {
+                    error,
+                }
+            );
+
+            return null;
+        }
+    }
+
+    function createCachedBankSnapshot(
+        record,
+        reason
+    ) {
+        if (
+            !record ||
+            !record.snapshot
+        ) {
+            return null;
+        }
+
+        const cached =
+            cloneValue(
+                record.snapshot
+            );
+
+        const now =
+            Date.now();
+
+        const lastLiveReadAt =
+            record.lastLiveReadAt ||
+            cached.lastLiveReadAt ||
+            cached.updatedAt ||
+            record.savedAt ||
+            null;
+
+        const cacheAgeMs =
+            Number.isFinite(
+                lastLiveReadAt
+            )
+                ? Math.max(
+                      0,
+                      now -
+                          lastLiveReadAt
+                  )
+                : null;
+
+        cached.available =
+            true;
+
+        cached.ready =
+            false;
+
+        cached.live =
+            false;
+
+        cached.cached =
+            true;
+
+        cached.reason =
+            reason;
+
+        cached.source =
+            "repository:finance-persistent-cache";
+
+        cached.cachedAt =
+            record.savedAt ||
+            now;
+
+        cached.lastLiveReadAt =
+            lastLiveReadAt;
+
+        cached.cacheAgeMs =
+            cacheAgeMs;
+
+        cached.ratesStale =
+            Number.isFinite(
+                cacheAgeMs
+            )
+                ? cacheAgeMs >
+                  BANK_RATE_CACHE_MAX_AGE_MS
+                : true;
+
+        cached.updatedAt =
+            now;
+
+        const countdown =
+            cached
+                .activeInvestment
+                ?.countdown;
+
+        if (
+            Number.isFinite(
+                countdown
+                    ?.estimatedMaturesAt
+            )
+        ) {
+            const remainingMs =
+                Math.max(
+                    0,
+                    countdown
+                        .estimatedMaturesAt -
+                    now
+                );
+
+            countdown.milliseconds =
+                remainingMs;
+
+            countdown.totalSeconds =
+                Math.floor(
+                    remainingMs /
+                    1_000
+                );
+
+            countdown.days =
+                Math.floor(
+                    countdown
+                        .totalSeconds /
+                    86_400
+                );
+
+            countdown.hours =
+                Math.floor(
+                    (
+                        countdown
+                            .totalSeconds %
+                        86_400
+                    ) /
+                    3_600
+                );
+
+            countdown.minutes =
+                Math.floor(
+                    (
+                        countdown
+                            .totalSeconds %
+                        3_600
+                    ) /
+                    60
+                );
+
+            countdown.seconds =
+                countdown
+                    .totalSeconds %
+                60;
+
+            countdown.cached =
+                true;
+
+            countdown.live =
+                false;
+
+            countdown.source =
+                "cached-maturity-projection";
+        }
+
+        if (
+            cached.pageSnapshot
+        ) {
+            cached.pageSnapshot.ready =
+                false;
+
+            cached.pageSnapshot.source =
+                "persistent-cache";
+        }
+
+        return cached;
+    }
+
+    function loadBankCache(
+        reason =
+            "persistent-cache"
+    ) {
+        const record =
+            readBankCacheRecord();
+
+        if (!record) {
+            return null;
+        }
+
+        return createCachedBankSnapshot(
+            record,
+            reason
+        );
+    }
+
     function getBankHelper() {
         return (
             dom.pages
@@ -857,97 +1213,53 @@
             repositoryState
                 .investmentBank;
 
-        /*
-         * Preserve the most recent successful Bank snapshot when
-         * the player navigates away from the Investment Bank.
-         */
         if (
             previous &&
             (
-                previous.available ===
+                previous.live ===
                     true ||
                 previous.cached ===
+                    true ||
+                previous.available ===
                     true
             )
         ) {
+            const record = {
+                version:
+                    BANK_CACHE_VERSION,
+
+                savedAt:
+                    previous.cachedAt ||
+                    previous.updatedAt ||
+                    Date.now(),
+
+                lastLiveReadAt:
+                    previous.lastLiveReadAt ||
+                    previous.updatedAt ||
+                    null,
+
+                snapshot:
+                    previous,
+            };
+
             const cached =
-                cloneValue(
-                    previous
+                createCachedBankSnapshot(
+                    record,
+                    reason
                 );
 
-            cached.available =
-                true;
-
-            cached.ready =
-                false;
-
-            cached.live =
-                false;
-
-            cached.cached =
-                true;
-
-            cached.reason =
-                reason;
-
-            cached.source =
-                "repository:finance-cache";
-
-            cached.cachedAt =
-                cached.cachedAt ||
-                Date.now();
-
-            cached.lastLiveReadAt =
-                previous.lastLiveReadAt ||
-                previous.updatedAt ||
-                null;
-
-            cached.updatedAt =
-                Date.now();
-
-            /*
-             * Continue the countdown locally from the previously
-             * calculated maturity timestamp.
-             */
-            const countdown =
-                cached
-                    .activeInvestment
-                    ?.countdown;
-
-            if (
-                Number.isFinite(
-                    countdown
-                        ?.estimatedMaturesAt
-                )
-            ) {
-                const remainingMs =
-                    Math.max(
-                        0,
-                        countdown
-                            .estimatedMaturesAt -
-                        Date.now()
-                    );
-
-                countdown.milliseconds =
-                    remainingMs;
-
-                countdown.totalSeconds =
-                    Math.floor(
-                        remainingMs /
-                        1_000
-                    );
-
-                countdown.cached =
-                    true;
-
-                countdown.live =
-                    false;
-
-                countdown.source =
-                    "cached-maturity-projection";
+            if (cached) {
+                return cached;
             }
+        }
 
-            return cached;
+        const persisted =
+            loadBankCache(
+                reason
+            );
+
+        if (persisted) {
+            return persisted;
         }
 
         return {
@@ -966,6 +1278,12 @@
 
             cached:
                 false,
+
+            ratesStale:
+                false,
+
+            cacheAgeMs:
+                null,
 
             reason,
 
@@ -1790,6 +2108,15 @@
                 reason
             );
 
+        if (
+            bank?.live ===
+            true
+        ) {
+            saveBankCache(
+                bank
+            );
+        }
+
         updateBankState(
             bank,
             reason,
@@ -2233,6 +2560,36 @@
         metrics.startCount +=
             1;
 
+        /*
+         * Restore the most recently verified Bank snapshot before
+         * attempting a live page read. This keeps Finance usable
+         * after navigation, reloads, and userscript restarts.
+         */
+        if (
+            repositoryState
+                .investmentBank ===
+            null
+        ) {
+            const cachedBank =
+                loadBankCache(
+                    "repository-startup-cache"
+                );
+
+            if (cachedBank) {
+                repositoryState
+                    .investmentBank =
+                    cachedBank;
+
+                publishState(
+                    STATE_KEYS
+                        .INVESTMENT_BANK,
+                    cachedBank,
+                    "repository-startup-cache",
+                    true
+                );
+            }
+        }
+
         const walletWatcherActive =
             await startWalletWatcher();
 
@@ -2391,6 +2748,54 @@
             investmentStrategy:
                 repositoryState
                     .investmentStrategy,
+            
+            cache: {
+                storageKey:
+                    BANK_CACHE_STORAGE_KEY,
+
+                version:
+                    BANK_CACHE_VERSION,
+
+                rateMaxAgeMs:
+                    BANK_RATE_CACHE_MAX_AGE_MS,
+
+                snapshotCached:
+                    repositoryState
+                        .investmentBank
+                        ?.cached ===
+                    true,
+
+                snapshotLive:
+                    repositoryState
+                        .investmentBank
+                        ?.live ===
+                    true,
+
+                cachedAt:
+                    repositoryState
+                        .investmentBank
+                        ?.cachedAt ||
+                    null,
+
+                lastLiveReadAt:
+                    repositoryState
+                        .investmentBank
+                        ?.lastLiveReadAt ||
+                    null,
+
+                ageMs:
+                    repositoryState
+                        .investmentBank
+                        ?.cacheAgeMs ??
+                    null,
+
+                ratesStale:
+                    repositoryState
+                        .investmentBank
+                        ?.ratesStale ===
+                    true,
+            },
+
 
             helper: {
                 id:
