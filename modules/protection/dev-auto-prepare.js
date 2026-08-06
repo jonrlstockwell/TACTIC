@@ -20,6 +20,8 @@
  * - Verify the confirmation amount
  * - Click the exact affirmative confirmation control
  * - Prevent duplicate or concurrent submissions
+ * - Refuse stale recommendations that exceed the live wallet
+ * - Clear the prepared amount after a confirmed deposit
  *
  * Safety:
  * - Development build only
@@ -29,6 +31,7 @@
  * - Submit control must be enabled and have an approved label
  * - Confirmation amount must exactly match the requested amount
  * - Confirmation control must use the verified aria-label
+ * - Live wallet must cover the complete deposit amount
  *
  * ============================================================
  */
@@ -224,6 +227,18 @@
         depositsCompleted:
             0,
 
+        walletGuardSkips:
+            0,
+
+        amountClearAttempts:
+            0,
+
+        amountClearsCompleted:
+            0,
+
+        amountClearFailures:
+            0,
+
         duplicateSkips:
             0,
 
@@ -263,6 +278,9 @@
         lastAmount:
             null,
 
+        lastWalletAmount:
+            null,
+
         lastPreparationResult:
             null,
 
@@ -270,6 +288,9 @@
             null,
 
         lastConfirmationResult:
+            null,
+
+        lastClearResult:
             null,
 
         lastError:
@@ -1022,6 +1043,155 @@
         };
     }
 
+    async function clearPreparedAmount(
+        page
+    ) {
+        metrics.amountClearAttempts +=
+            1;
+
+        if (
+            !page?.amount ||
+            page.amount.readSupported !==
+                true
+        ) {
+            metrics.amountClearFailures +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                cleared:
+                    false,
+
+                reason:
+                    "amount-control-unavailable",
+            };
+        }
+
+        try {
+            const readResult =
+                await page.amount.read();
+
+            const control =
+                readResult instanceof
+                    HTMLInputElement
+                    ? readResult
+                    : (
+                          readResult?.control ||
+                          readResult?.element ||
+                          readResult?.input ||
+                          null
+                      );
+
+            if (
+                !(
+                    control instanceof
+                    HTMLInputElement
+                )
+            ) {
+                metrics.amountClearFailures +=
+                    1;
+
+                return {
+                    success:
+                        false,
+
+                    cleared:
+                        false,
+
+                    reason:
+                        "amount-control-invalid",
+                };
+            }
+
+            const valueSetter =
+                Object.getOwnPropertyDescriptor(
+                    HTMLInputElement.prototype,
+                    "value"
+                )?.set;
+
+            if (
+                typeof valueSetter ===
+                "function"
+            ) {
+                valueSetter.call(
+                    control,
+                    ""
+                );
+            } else {
+                control.value =
+                    "";
+            }
+
+            control.dispatchEvent(
+                new Event(
+                    "input",
+                    {
+                        bubbles:
+                            true,
+                    }
+                )
+            );
+
+            control.dispatchEvent(
+                new Event(
+                    "change",
+                    {
+                        bubbles:
+                            true,
+                    }
+                )
+            );
+
+            const cleared =
+                control.value ===
+                "";
+
+            if (cleared) {
+                metrics.amountClearsCompleted +=
+                    1;
+            } else {
+                metrics.amountClearFailures +=
+                    1;
+            }
+
+            return {
+                success:
+                    cleared,
+
+                cleared,
+
+                reason:
+                    cleared
+                        ? "amount-cleared"
+                        : "amount-remained-populated",
+
+                value:
+                    control.value,
+            };
+        } catch (error) {
+            metrics.amountClearFailures +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                cleared:
+                    false,
+
+                reason:
+                    "amount-clear-failed",
+
+                error:
+                    createErrorSnapshot(
+                        error
+                    ),
+            };
+        }
+    }
+
     async function submitPreparedDeposit({
         destination,
         amount,
@@ -1225,6 +1395,16 @@
         metrics.depositsCompleted +=
             1;
 
+        const clearResult =
+            await clearPreparedAmount(
+                page
+            );
+
+        metrics.lastClearResult =
+            cloneValue(
+                clearResult
+            );
+
         return {
             success:
                 true,
@@ -1249,6 +1429,8 @@
                 lastSubmissionAt,
 
             confirmationResult,
+
+            clearResult,
 
             safety: {
                 submitClicked:
@@ -1298,6 +1480,18 @@
         const configuration =
             inspection?.configuration;
 
+        const walletAmount =
+            Number(
+                inspection?.wallet?.value
+            );
+
+        metrics.lastWalletAmount =
+            Number.isSafeInteger(
+                walletAmount
+            )
+                ? walletAmount
+                : null;
+
         if (
             configuration?.enabled !==
                 true ||
@@ -1336,6 +1530,44 @@
                 1;
 
             return null;
+        }
+
+        if (
+            !Number.isSafeInteger(
+                walletAmount
+            ) ||
+            walletAmount <= 0 ||
+            walletAmount < amount
+        ) {
+            metrics.validationSkips +=
+                1;
+
+            metrics.walletGuardSkips +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                submitted:
+                    false,
+
+                confirmed:
+                    false,
+
+                reason:
+                    "insufficient-current-wallet",
+
+                walletAmount:
+                    Number.isSafeInteger(
+                        walletAmount
+                    )
+                        ? walletAmount
+                        : null,
+
+                requestedAmount:
+                    amount,
+            };
         }
 
         metrics.eligibleChecks +=
@@ -1662,6 +1894,12 @@
                 confirmationAmountMustMatch:
                     true,
 
+                liveWalletMustCoverAmount:
+                    true,
+
+                clearsPreparedAmountAfterDeposit:
+                    true,
+
                 automaticNavigation:
                     true,
 
@@ -1694,6 +1932,12 @@
                     cloneValue(
                         metrics
                             .lastConfirmationResult
+                    ),
+
+                lastClearResult:
+                    cloneValue(
+                        metrics
+                            .lastClearResult
                     ),
 
                 lastError:
