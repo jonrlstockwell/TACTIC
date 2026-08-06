@@ -14,7 +14,7 @@
  *
  * Responsibilities:
  * - Register the Protection drawer module
- * - Subscribe to live wallet updates
+ * - Subscribe to live wallet updates from Finance Repository
  * - Evaluate the current wallet against Protection rules
  * - Display recommended deposit plans
  * - Allow the player to select a deposit destination
@@ -38,7 +38,7 @@
  * Dependencies:
  * - modules/protection/settings.js
  * - modules/protection/rules.js
- * - repositories/user/index.js
+ * - repositories/finance/index.js
  * - services/actions/index.js
  * - services/actions/deposit.js
  * - services/deposit/index.js
@@ -104,36 +104,34 @@
                 "events",
                 "notifications",
                 "health",
-                "user",
                 "protection",
             ]);
     } catch (error) {
-    console.error(
-        "[TACTIC Protection] Required dependencies are unavailable.",
-        {
-            message:
-                error?.message ||
-                String(error),
+        console.error(
+            "[TACTIC Protection] Required dependencies are unavailable.",
+            {
+                message:
+                    error?.message ||
+                    String(error),
 
-            error,
+                error,
 
-            requestedDependencies: [
-                "actions",
-                "capabilities",
-                "deposit",
-                "drawer",
-                "logger",
-                "events",
-                "notifications",
-                "health",
-                "user",
-                "protection",
-            ],
-        }
-    );
+                requestedDependencies: [
+                    "actions",
+                    "capabilities",
+                    "deposit",
+                    "drawer",
+                    "logger",
+                    "events",
+                    "notifications",
+                    "health",
+                    "protection",
+                ],
+            }
+        );
 
-    return;
-}
+        return;
+    }
 
     const {
         actions,
@@ -144,19 +142,38 @@
         events,
         notifications,
         health,
-
-        user:
-            userRepository,
-
         protection,
     } = dependencies;
 
     /*
-    * The Developer service is attached directly to
-    * TACTIC.services rather than registered as a dependency.
-    */
+     * Finance Repository owns all financial state, including
+     * the live wallet balance.
+     */
+    const financeRepository =
+        TACTIC.repositories?.finance;
+
+    /*
+     * The Developer service is attached directly to
+     * TACTIC.services rather than registered as a dependency.
+     */
     const developer =
         TACTIC.services.developer;
+
+    if (
+        !financeRepository ||
+        typeof financeRepository.getWallet !==
+            "function" ||
+        typeof financeRepository.refreshWallet !==
+            "function" ||
+        typeof financeRepository.subscribe !==
+            "function"
+    ) {
+        console.error(
+            "[TACTIC Protection] Finance Repository is unavailable."
+        );
+
+        return;
+    }
 
     const settings =
         protection.settings;
@@ -197,7 +214,7 @@
         [];
 
     let latestWallet =
-        userRepository.getWallet();
+        financeRepository.getWallet();
 
     let latestEvaluation =
         null;
@@ -1620,7 +1637,7 @@
                 "Refresh Wallet",
                 () => {
                     latestWallet =
-                        userRepository
+                        financeRepository
                             .refreshWallet(
                                 "protection-ui"
                             );
@@ -1836,8 +1853,10 @@
                 health:
                     Boolean(health),
 
-                user:
-                    Boolean(userRepository),
+                finance:
+                    Boolean(
+                        financeRepository
+                    ),
 
                 protection:
                     Boolean(protection),
@@ -1941,8 +1960,10 @@
                 Date.now();
 
             unsubscribeWallet =
-                userRepository.subscribe(
-                    "wallet",
+                financeRepository.subscribe(
+                    financeRepository
+                        .keys
+                        .WALLET,
                     ({
                         value,
                     }) => {
