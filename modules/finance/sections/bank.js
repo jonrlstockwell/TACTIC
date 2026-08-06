@@ -2231,12 +2231,57 @@
                     : "Investment Bank data is currently unavailable"
             );
 
+        const bankStatus =
+            bank?.live ===
+            true
+                ? {
+                      label:
+                          "Live",
+
+                      background:
+                          "rgba(76,175,80,.10)",
+
+                      border:
+                          "rgba(76,175,80,.25)",
+
+                      color:
+                          "#a5d6a7",
+                  }
+                : bank?.cached ===
+                  true
+                    ? {
+                          label:
+                              "Cached",
+
+                          background:
+                              "rgba(245,166,35,.08)",
+
+                          border:
+                              "rgba(245,166,35,.25)",
+
+                          color:
+                              "#ffcc80",
+                      }
+                    : {
+                          label:
+                              "Unavailable",
+
+                          background:
+                              "rgba(220,70,70,.08)",
+
+                          border:
+                              "rgba(220,70,70,.25)",
+
+                          color:
+                              "#ff9d9d",
+                      };
+
         sectionHeader.header.appendChild(
             createBadge(
-                bank?.available
-                    ? "Live"
-                    : "Unavailable",
-                bank?.available
+                bankStatus.label,
+                bankStatus
+            )
+        );
                     ? {
                           background:
                               "rgba(76,175,80,.10)",
@@ -2263,6 +2308,44 @@
         wrapper.appendChild(
             sectionHeader.header
         );
+
+        if (
+            bank?.cached ===
+            true
+        ) {
+            wrapper.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Showing the most recent Investment Bank data collected by TACTIC. Open Torn's Investment Bank page to refresh current rates and verify the live countdown.",
+
+                        styles: {
+                            padding:
+                                "9px 10px",
+
+                            border:
+                                "1px solid rgba(245,166,35,.22)",
+
+                            borderRadius:
+                                "6px",
+
+                            background:
+                                "rgba(245,166,35,.06)",
+
+                            color:
+                                "#d7c5a0",
+
+                            fontSize:
+                                "10px",
+
+                            lineHeight:
+                                "1.45",
+                        },
+                    }
+                )
+            );
+        }
 
         if (
             !bank ||

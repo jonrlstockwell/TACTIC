@@ -2103,8 +2103,14 @@
                         active?.active
                             ? `${formatDuration(
                                   remainingMs
-                              )} remaining`
-                            : "No active investment",
+                              )} remaining${
+                                  bank?.cached
+                                      ? " · cached"
+                                      : ""
+                              }`
+                            : bank?.cached
+                              ? "Last known Bank data"
+                              : "No active investment",
 
                     onClick:
                         () => {

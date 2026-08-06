@@ -853,6 +853,103 @@
     function createUnavailableBankSnapshot(
         reason
     ) {
+        const previous =
+            repositoryState
+                .investmentBank;
+
+        /*
+         * Preserve the most recent successful Bank snapshot when
+         * the player navigates away from the Investment Bank.
+         */
+        if (
+            previous &&
+            (
+                previous.available ===
+                    true ||
+                previous.cached ===
+                    true
+            )
+        ) {
+            const cached =
+                cloneValue(
+                    previous
+                );
+
+            cached.available =
+                true;
+
+            cached.ready =
+                false;
+
+            cached.live =
+                false;
+
+            cached.cached =
+                true;
+
+            cached.reason =
+                reason;
+
+            cached.source =
+                "repository:finance-cache";
+
+            cached.cachedAt =
+                cached.cachedAt ||
+                Date.now();
+
+            cached.lastLiveReadAt =
+                previous.lastLiveReadAt ||
+                previous.updatedAt ||
+                null;
+
+            cached.updatedAt =
+                Date.now();
+
+            /*
+             * Continue the countdown locally from the previously
+             * calculated maturity timestamp.
+             */
+            const countdown =
+                cached
+                    .activeInvestment
+                    ?.countdown;
+
+            if (
+                Number.isFinite(
+                    countdown
+                        ?.estimatedMaturesAt
+                )
+            ) {
+                const remainingMs =
+                    Math.max(
+                        0,
+                        countdown
+                            .estimatedMaturesAt -
+                        Date.now()
+                    );
+
+                countdown.milliseconds =
+                    remainingMs;
+
+                countdown.totalSeconds =
+                    Math.floor(
+                        remainingMs /
+                        1_000
+                    );
+
+                countdown.cached =
+                    true;
+
+                countdown.live =
+                    false;
+
+                countdown.source =
+                    "cached-maturity-projection";
+            }
+
+            return cached;
+        }
+
         return {
             type:
                 DATA_KEYS
@@ -862,6 +959,12 @@
                 false,
 
             ready:
+                false,
+
+            live:
+                false,
+
+            cached:
                 false,
 
             reason,
@@ -914,7 +1017,22 @@
                     ?.ready ===
                 true,
 
+            live:
+                helperSnapshot
+                    ?.ready ===
+                true,
+
+            cached:
+                false,
+
             reason,
+
+            lastLiveReadAt:
+                helperSnapshot
+                    ?.ready ===
+                true
+                    ? Date.now()
+                    : null,
 
             strategy:
                 repositoryState
@@ -984,6 +1102,17 @@
             snapshot => ({
                 available:
                     snapshot.available,
+
+                ready:
+                    snapshot.ready,
+
+                live:
+                    snapshot.live ===
+                    true,
+
+                cached:
+                    snapshot.cached ===
+                    true,
 
                 strategy:
                     snapshot.strategy,

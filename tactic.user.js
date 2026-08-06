@@ -134,7 +134,7 @@
 // Repositories depend on their supporting services.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=4
 //
 //
 // ============================================================
@@ -179,7 +179,7 @@
 // Finance application shell. Individual Finance sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=4
 //
 //
 // ============================================================
@@ -188,7 +188,7 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/sections/wallet.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/sections/bank.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/sections/bank.js?v=3
 //
 //
 // ============================================================
