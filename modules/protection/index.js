@@ -106,7 +106,6 @@
                 "health",
                 "user",
                 "protection",
-                "developer",
             ]);
     } catch (error) {
         console.error(
@@ -131,7 +130,6 @@
             userRepository,
 
         protection,
-        developer,
     } = dependencies;
 
     const settings =
