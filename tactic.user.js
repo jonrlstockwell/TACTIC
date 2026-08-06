@@ -78,7 +78,7 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/framework.js?v=1
 
 // Deposit-page DOM helpers.
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=6
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/api.js?v=2
 
