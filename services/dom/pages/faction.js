@@ -9,11 +9,14 @@
  *
  * Purpose:
  * Registers page-specific DOM helpers for the faction armoury
- * cash-deposit interface.
+ * cash interface, including personal faction balance reading
+ * and safe deposit preparation.
  *
  * Responsibilities:
- * - Determine whether the faction deposit controls are ready
- * - Locate verified faction deposit elements
+ * - Determine whether the faction cash interface is ready
+ * - Locate verified faction cash and deposit elements
+ * - Read the player's personal faction-held cash balance
+ * - Describe faction funds as request-dependent liquidity
  * - Fill the deposit amount
  * - Dispatch input and change events
  * - Highlight the manual submit control
@@ -120,6 +123,24 @@
 
         readinessFailures:
             0,
+
+        balanceReads:
+            0,
+
+        balanceReadSuccesses:
+            0,
+
+        balanceReadFailures:
+            0,
+
+        financialSnapshotReads:
+            0,
+
+        lastBalance:
+            null,
+
+        lastBalanceReadAt:
+            null,
 
         amountSets:
             0,
@@ -318,6 +339,183 @@
         return findAllByKey(
             SELECTOR_KEYS.PRESETS
         );
+    }
+
+    function normalizeText(
+        value
+    ) {
+        return String(
+            value ?? ""
+        )
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function parseMoney(
+        value
+    ) {
+        const normalized =
+            normalizeText(value);
+
+        const numeric =
+            Number(
+                normalized.replace(
+                    /[^0-9.-]/g,
+                    ""
+                )
+            );
+
+        return Number.isSafeInteger(
+            numeric
+        )
+            ? numeric
+            : null;
+    }
+
+    function parsePersonalBalanceText(
+        text
+    ) {
+        const match =
+            normalizeText(text).match(
+                /\bbalance\s+of\s+\$([\d,]+)/i
+            );
+
+        if (!match) {
+            return null;
+        }
+
+        return parseMoney(
+            match[1]
+        );
+    }
+
+    function getPersonalBalance() {
+        metrics.balanceReads++;
+
+        metrics.lastBalanceReadAt =
+            Date.now();
+
+        const cashSection =
+            getCashSection();
+
+        if (!cashSection) {
+            metrics.balanceReadFailures++;
+
+            return {
+                available: false,
+                verified: false,
+                value: null,
+                reason:
+                    "cash-section-not-found",
+            };
+        }
+
+        const raw =
+            normalizeText(
+                cashSection.textContent
+            );
+
+        const value =
+            parsePersonalBalanceText(
+                raw
+            );
+
+        if (
+            !Number.isSafeInteger(
+                value
+            )
+        ) {
+            metrics.balanceReadFailures++;
+
+            return {
+                available: false,
+                verified: false,
+                value: null,
+                raw,
+                reason:
+                    "balance-not-found",
+            };
+        }
+
+        metrics.balanceReadSuccesses++;
+
+        metrics.lastBalance =
+            value;
+
+        return {
+            available: true,
+            verified: true,
+            value,
+            raw,
+            source:
+                "faction-cash-section",
+            readAt:
+                metrics.lastBalanceReadAt,
+        };
+    }
+
+    function getFinancialSnapshot() {
+
+        metrics.financialSnapshotReads++;
+
+        const balance =
+            getPersonalBalance();
+
+        return {
+
+            id:
+                "faction-vault",
+
+            type:
+                "faction-vault",
+
+            ownership:
+                "personal",
+
+            balance,
+
+            spendable:
+                balance.available,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "request-dependent",
+
+            access: {
+
+                canDeposit:
+                    true,
+
+                canSelfWithdraw:
+                    false,
+
+                canRequestWithdrawal:
+                    true,
+
+                requiresFactionBanker:
+                    true,
+
+                timing:
+                    "variable",
+            },
+
+            state: {
+
+                live:
+                    balance.available,
+
+                cached:
+                    false,
+            },
+
+            verifiedAt:
+                balance.readAt,
+
+            source:
+                "faction-bank-dom-helper",
+        };
     }
 
     function isReady() {
@@ -911,6 +1109,9 @@
 
             readiness,
 
+            financialSnapshot:
+                getFinancialSnapshot(),
+
             elements: {
                 root:
                     Boolean(
@@ -1033,6 +1234,12 @@
                 "page.inspect":
                     "inspect",
 
+                "finance.balance.read":
+                    "getPersonalBalance",
+
+                "finance.snapshot.read":
+                    "getFinancialSnapshot",
+
                 "amount.read":
                     "getAmountInput",
 
@@ -1078,6 +1285,9 @@
             isReady,
             waitUntilReady,
 
+            getPersonalBalance,
+            getFinancialSnapshot,
+
             getAmountInput,
             getSubmitButton,
 
@@ -1120,6 +1330,8 @@
                 "page.ready",
                 "page.wait-until-ready",
                 "page.inspect",
+                "finance.balance.read",
+                "finance.snapshot.read",
                 "amount.read",
                 "amount.set",
                 "submit.locate",
