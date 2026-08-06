@@ -41,6 +41,7 @@
 // Module and developer framework.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/section-manager.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=2
 //
 //
