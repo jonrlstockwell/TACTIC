@@ -9,14 +9,19 @@
  *
  * Purpose:
  * Provides centralized dependency registration, resolution,
- * validation, and diagnostics.
+ * validation, aliases, convenience loading, and diagnostics.
  *
  * Responsibilities:
  * - Register named dependency resolvers
  * - Resolve dependencies when requested
  * - Resolve nested TACTIC object paths
  * - Validate required dependencies
- * - Support aliases
+ * - Support dependency aliases
+ * - Resolve multiple dependencies
+ * - Support required and optional dependencies
+ * - Expose the TACTIC.resolve() convenience API
+ * - Expose the TACTIC.require() convenience API
+ * - Expose the TACTIC.use() convenience API
  * - Report missing and failed resolutions
  * - Expose dependency diagnostics
  *
@@ -24,8 +29,8 @@
  * - Create services
  * - Initialize modules
  * - Change service load order
- * - Automatically replace direct property access
  * - Persist dependency instances
+ * - Automatically migrate existing modules
  *
  * Public API:
  * - TACTIC.dependencies.register()
@@ -35,9 +40,14 @@
  * - TACTIC.dependencies.resolve()
  * - TACTIC.dependencies.require()
  * - TACTIC.dependencies.resolveMany()
+ * - TACTIC.dependencies.use()
+ * - TACTIC.dependencies.list()
+ * - TACTIC.dependencies.listAliases()
  * - TACTIC.dependencies.inspect()
  * - TACTIC.resolve()
+ * - TACTIC.require()
  * - TACTIC.requireDependencies()
+ * - TACTIC.use()
  *
  * Dependencies:
  * - core/namespace.js
@@ -78,6 +88,9 @@
         aliasRegistrations:
             0,
 
+        aliasReplacements:
+            0,
+
         resolutions:
             0,
 
@@ -93,15 +106,52 @@
         requiredFailures:
             0,
 
+        batchResolutions:
+            0,
+
+        successfulBatchResolutions:
+            0,
+
+        failedBatchResolutions:
+            0,
+
+        useRequests:
+            0,
+
+        successfulUseRequests:
+            0,
+
+        failedUseRequests:
+            0,
+
         lastDependency:
             null,
 
         lastResolvedAt:
             null,
 
+        lastBatchAt:
+            null,
+
+        lastUseAt:
+            null,
+
         lastError:
             null,
     };
+
+    function isPlainObject(
+        value
+    ) {
+        return (
+            value !== null &&
+            typeof value ===
+                "object" &&
+            !Array.isArray(
+                value
+            )
+        );
+    }
 
     function normalizeName(
         value
@@ -123,7 +173,9 @@
 
         if (
             !/^[a-z0-9._:-]+$/
-                .test(normalized)
+                .test(
+                    normalized
+                )
         ) {
             throw new TypeError(
                 `Dependency name "${value}" contains unsupported characters.`
@@ -146,16 +198,28 @@
             );
         }
 
-        return value
-            .trim()
-            .split(".")
-            .map(
-                (part) =>
-                    part.trim()
-            )
-            .filter(
-                Boolean
+        const parts =
+            value
+                .trim()
+                .split(".")
+                .map(
+                    (part) =>
+                        part.trim()
+                )
+                .filter(
+                    Boolean
+                );
+
+        if (
+            parts.length ===
+            0
+        ) {
+            throw new TypeError(
+                "Dependency path must contain at least one valid segment."
             );
+        }
+
+        return parts;
     }
 
     function createErrorSnapshot(
@@ -168,11 +232,23 @@
 
             message:
                 error?.message ||
-                String(error),
+                String(
+                    error
+                ),
 
             timestamp:
                 Date.now(),
         };
+    }
+
+    function cloneErrorSnapshot(
+        errorSnapshot
+    ) {
+        return errorSnapshot
+            ? {
+                  ...errorSnapshot,
+              }
+            : null;
     }
 
     function followPath(
@@ -293,12 +369,9 @@
                 record.lastAvailable,
 
             lastError:
-                record.lastError
-                    ? {
-                          ...record
-                              .lastError,
-                      }
-                    : null,
+                cloneErrorSnapshot(
+                    record.lastError
+                ),
         };
     }
 
@@ -351,8 +424,10 @@
 
             path:
                 typeof options.path ===
-                    "string"
+                    "string" &&
+                options.path.trim()
                     ? options.path
+                          .trim()
                     : null,
 
             required:
@@ -470,10 +545,13 @@
             );
         }
 
-        if (
-            aliases.has(
+        const existing =
+            aliases.get(
                 normalizedAlias
-            ) &&
+            );
+
+        if (
+            existing &&
             options.replace !==
                 true
         ) {
@@ -487,8 +565,36 @@
             normalizedTarget
         );
 
-        metrics.aliasRegistrations +=
-            1;
+        /*
+         * Validate that the new alias does not create a circular
+         * alias chain.
+         */
+        try {
+            resolveAlias(
+                normalizedAlias
+            );
+        } catch (error) {
+            if (existing) {
+                aliases.set(
+                    normalizedAlias,
+                    existing
+                );
+            } else {
+                aliases.delete(
+                    normalizedAlias
+                );
+            }
+
+            throw error;
+        }
+
+        if (existing) {
+            metrics.aliasReplacements +=
+                1;
+        } else {
+            metrics.aliasRegistrations +=
+                1;
+        }
 
         return {
             alias:
@@ -538,9 +644,20 @@
                 metrics.requiredFailures +=
                     1;
 
-                throw new Error(
-                    `Dependency "${requestedName}" is not registered.`
-                );
+                const error =
+                    new Error(
+                        `Dependency "${requestedName}" is not registered.`
+                    );
+
+                error.name =
+                    "TACTICDependencyNotRegisteredError";
+
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+
+                throw error;
             }
 
             return (
@@ -587,6 +704,9 @@
                     .successfulResolutions +=
                     1;
 
+                metrics.lastError =
+                    null;
+
                 return value;
             }
 
@@ -605,9 +725,25 @@
                 metrics.requiredFailures +=
                     1;
 
-                throw new Error(
-                    `Dependency "${requestedName}" is registered but currently unavailable.`
-                );
+                const error =
+                    new Error(
+                        `Dependency "${requestedName}" is registered but currently unavailable.`
+                    );
+
+                error.name =
+                    "TACTICDependencyUnavailableError";
+
+                record.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+
+                throw error;
             }
 
             return (
@@ -615,8 +751,24 @@
                 null
             );
         } catch (error) {
-            record.resolverErrors +=
-                1;
+            /*
+             * Required-unavailable errors are created by this
+             * function after the resolver returns no value. They
+             * should not be counted as resolver execution errors.
+             */
+            const generatedUnavailableError =
+                error?.name ===
+                "TACTICDependencyUnavailableError";
+
+            if (
+                !generatedUnavailableError
+            ) {
+                record.resolverErrors +=
+                    1;
+
+                metrics.resolverErrors +=
+                    1;
+            }
 
             record.lastAvailable =
                 false;
@@ -625,9 +777,6 @@
                 createErrorSnapshot(
                     error
                 );
-
-            metrics.resolverErrors +=
-                1;
 
             metrics.lastError =
                 createErrorSnapshot(
@@ -693,7 +842,14 @@
 
             return (
                 resolve(
-                    requestedName
+                    requestedName,
+                    {
+                        required:
+                            false,
+
+                        fallback:
+                            null,
+                    }
                 ) !==
                 null
             );
@@ -716,6 +872,12 @@
             );
         }
 
+        metrics.batchResolutions +=
+            1;
+
+        metrics.lastBatchAt =
+            Date.now();
+
         const resolved = {};
 
         const missing = [];
@@ -724,14 +886,14 @@
             const name of
             names
         ) {
-            const normalizedName =
+            const requestedName =
                 normalizeName(
                     name
                 );
 
             const value =
                 resolve(
-                    normalizedName,
+                    requestedName,
                     {
                         required:
                             false,
@@ -742,7 +904,7 @@
                 );
 
             resolved[
-                normalizedName
+                requestedName
             ] = value;
 
             if (
@@ -750,33 +912,250 @@
                 null
             ) {
                 missing.push(
-                    normalizedName
+                    requestedName
                 );
             }
+        }
+
+        const success =
+            missing.length ===
+            0;
+
+        if (success) {
+            metrics
+                .successfulBatchResolutions +=
+                1;
+        } else {
+            metrics
+                .failedBatchResolutions +=
+                1;
         }
 
         if (
             options.required ===
                 true &&
-            missing.length > 0
+            !success
         ) {
             metrics.requiredFailures +=
                 1;
 
-            throw new Error(
-                `Required dependencies are unavailable: ${missing.join(", ")}`
-            );
+            const error =
+                new Error(
+                    `Required dependencies are unavailable: ${missing.join(", ")}`
+                );
+
+            error.name =
+                "TACTICRequiredDependenciesUnavailableError";
+
+            error.missing =
+                [
+                    ...missing,
+                ];
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            throw error;
         }
 
         return {
-            success:
-                missing.length ===
-                0,
+            success,
 
             resolved,
 
             missing,
         };
+    }
+
+    function normalizeUseOption(
+        option
+    ) {
+        if (
+            option ===
+            false
+        ) {
+            return {
+                required:
+                    false,
+
+                fallback:
+                    null,
+            };
+        }
+
+        if (
+            option ===
+                true ||
+            option ===
+                undefined ||
+            option ===
+                null
+        ) {
+            return {
+                required:
+                    true,
+
+                fallback:
+                    null,
+            };
+        }
+
+        if (
+            isPlainObject(
+                option
+            )
+        ) {
+            return {
+                required:
+                    option.required !==
+                    false,
+
+                fallback:
+                    option.fallback ??
+                    null,
+            };
+        }
+
+        throw new TypeError(
+            "TACTIC.use() dependency options must be true, false, null, undefined, or an options object."
+        );
+    }
+
+    function use(
+        dependencies
+    ) {
+        metrics.useRequests +=
+            1;
+
+        metrics.lastUseAt =
+            Date.now();
+
+        try {
+            /*
+             * Array syntax:
+             *
+             * TACTIC.use([
+             *     "navigation",
+             *     "deposit",
+             *     "user"
+             * ]);
+             *
+             * Every dependency in array syntax is required.
+             */
+            if (
+                Array.isArray(
+                    dependencies
+                )
+            ) {
+                const result =
+                    resolveMany(
+                        dependencies,
+                        {
+                            required:
+                                true,
+                        }
+                    );
+
+                metrics
+                    .successfulUseRequests +=
+                    1;
+
+                return result.resolved;
+            }
+
+            /*
+             * Object syntax:
+             *
+             * TACTIC.use({
+             *     navigation: true,
+             *     deposit: {
+             *         required: true
+             *     },
+             *     optionalPlugin: false
+             * });
+             */
+            if (
+                isPlainObject(
+                    dependencies
+                )
+            ) {
+                const resolved = {};
+
+                const missing = [];
+
+                for (
+                    const [
+                        name,
+                        rawOption,
+                    ] of Object.entries(
+                        dependencies
+                    )
+                ) {
+                    const requestedName =
+                        normalizeName(
+                            name
+                        );
+
+                    const option =
+                        normalizeUseOption(
+                            rawOption
+                        );
+
+                    const value =
+                        resolve(
+                            requestedName,
+                            {
+                                required:
+                                    option.required,
+
+                                fallback:
+                                    option.fallback,
+                            }
+                        );
+
+                    /*
+                     * Preserve the caller's object key so modules
+                     * may choose readable local dependency names.
+                     */
+                    resolved[
+                        name
+                    ] = value;
+
+                    if (
+                        value ===
+                            null ||
+                        value ===
+                            undefined
+                    ) {
+                        missing.push(
+                            requestedName
+                        );
+                    }
+                }
+
+                metrics
+                    .successfulUseRequests +=
+                    1;
+
+                return resolved;
+            }
+
+            throw new TypeError(
+                "TACTIC.use() expects an array or plain object."
+            );
+        } catch (error) {
+            metrics.failedUseRequests +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            throw error;
+        }
     }
 
     function list() {
@@ -814,6 +1193,9 @@
     }
 
     function inspect() {
+        const dependencySnapshots =
+            list();
+
         return {
             service:
                 "dependencies",
@@ -831,8 +1213,44 @@
             aliasCount:
                 aliases.size,
 
+            availableCount:
+                dependencySnapshots
+                    .filter(
+                        (
+                            dependency
+                        ) =>
+                            dependency
+                                .lastAvailable ===
+                            true
+                    )
+                    .length,
+
+            unavailableCount:
+                dependencySnapshots
+                    .filter(
+                        (
+                            dependency
+                        ) =>
+                            dependency
+                                .lastAvailable ===
+                            false
+                    )
+                    .length,
+
+            unresolvedCount:
+                dependencySnapshots
+                    .filter(
+                        (
+                            dependency
+                        ) =>
+                            dependency
+                                .lastAvailable ===
+                            null
+                    )
+                    .length,
+
             dependencies:
-                list(),
+                dependencySnapshots,
 
             aliases:
                 listAliases(),
@@ -841,12 +1259,9 @@
                 ...metrics,
 
                 lastError:
-                    metrics.lastError
-                        ? {
-                              ...metrics
-                                  .lastError,
-                          }
-                        : null,
+                    cloneErrorSnapshot(
+                        metrics.lastError
+                    ),
             },
         };
     }
@@ -859,10 +1274,12 @@
 
             has,
             resolve,
+
             require:
                 requireDependency,
 
             resolveMany,
+            use,
 
             list,
             listAliases,
@@ -875,14 +1292,21 @@
     TACTIC.resolve =
         resolve;
 
+    TACTIC.require =
+        requireDependency;
+
     TACTIC.requireDependencies =
         resolveMany;
+
+    TACTIC.use =
+        use;
 
     /*
      * Initial dependency paths.
      *
-     * These resolve dynamically, so the registry can load before
-     * the individual services are created.
+     * These use dynamic path resolvers. The individual services
+     * do not have to exist when this file loads. They only need
+     * to exist when the dependency is resolved.
      */
     const initialPaths = {
         logger:
@@ -997,6 +1421,13 @@
 
             aliases:
                 aliases.size,
+
+            convenienceApis: [
+                "TACTIC.resolve",
+                "TACTIC.require",
+                "TACTIC.requireDependencies",
+                "TACTIC.use",
+            ],
         }
     );
 })();
