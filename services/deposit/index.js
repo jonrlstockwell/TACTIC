@@ -48,8 +48,7 @@
  * - services/deposit/destinations.js
  * - services/navigation/index.js
  * - services/dom/index.js
- * - services/dom/pages/index.js
- * - services/dom/pages/faction.js
+ * - services/dom/pages/api.js
  * - services/storage.js
  * - services/notifications/index.js
  * - core/logger.js
@@ -935,8 +934,8 @@
         };
     }
 
-    async function waitForHelper(
-        helper,
+    async function waitForPage(
+        page,
         helperId,
         timeoutMs
     ) {
@@ -944,15 +943,47 @@
             1;
 
         if (
-            typeof helper.waitUntilReady !==
-                "function"
+            !page ||
+            !page.readiness
         ) {
+            metrics.helperWaitFailures +=
+                1;
+
+            return {
+                ready:
+                    false,
+
+                reason:
+                    "page-readiness-unavailable",
+
+                waitedMs:
+                    0,
+            };
+        }
+
+        try {
             if (
-                typeof helper.isReady ===
-                    "function"
+                page.readiness
+                    .waitSupported
+            ) {
+                return await page
+                    .readiness
+                    .wait({
+                        timeoutMs,
+
+                        rejectOnTimeout:
+                            false,
+                    });
+            }
+
+            if (
+                page.readiness
+                    .supported
             ) {
                 const readiness =
-                    helper.isReady();
+                    await page
+                        .readiness
+                        .check();
 
                 return {
                     ...readiness,
@@ -967,20 +998,11 @@
                     true,
 
                 reason:
-                    "helper-has-no-readiness-check",
+                    "page-has-no-readiness-check",
 
                 waitedMs:
                     0,
             };
-        }
-
-        try {
-            return await helper.waitUntilReady({
-                timeoutMs,
-
-                rejectOnTimeout:
-                    false,
-            });
         } catch (error) {
             metrics.helperWaitFailures +=
                 1;
@@ -991,7 +1013,7 @@
                 );
 
             logger?.warn(
-                "Deposit page helper readiness check failed",
+                "Deposit Page API readiness check failed",
                 {
                     helperId,
                     timeoutMs,
@@ -1004,7 +1026,7 @@
                     false,
 
                 reason:
-                    "helper-wait-failed",
+                    "page-wait-failed",
 
                 waitedMs:
                     null,
@@ -1144,12 +1166,12 @@
         highlightSubmitControl,
         notify,
     }) {
-        const helper =
-            getHelper(
+        const page =
+            getPage(
                 helperId
             );
 
-        if (!helper) {
+        if (!page) {
             return createResult({
                 destination:
                     destination.id,
@@ -1162,10 +1184,10 @@
                 amount,
 
                 reason:
-                    "helper-unavailable",
+                    "page-unavailable",
 
                 message:
-                    `The ${destination.name} DOM page helper is unavailable.`,
+                    `The ${destination.name} Page API entry is unavailable.`,
             });
         }
 
@@ -1173,8 +1195,8 @@
             helperId;
 
         const readiness =
-            await waitForHelper(
-                helper,
+            await waitForPage(
+                page,
                 helperId,
                 timeoutMs
             );
@@ -1187,7 +1209,7 @@
                 1;
 
             recordActivity(
-                "helper-not-ready",
+                "page-not-ready",
                 {
                     destination:
                         destination.id,
@@ -1229,10 +1251,9 @@
         }
 
         if (
-            !dom.pages.can(
-                helper,
-                PREPARE_CAPABILITY
-            )
+            page.deposit
+                .prepareSupported !==
+            true
         ) {
             metrics
                 .helperPreparationFailures +=
@@ -1250,10 +1271,10 @@
                 amount,
 
                 reason:
-                    "helper-capability-unavailable",
+                    "page-capability-unavailable",
 
                 message:
-                    `The ${destination.name} helper does not support deposit preparation.`,
+                    `The ${destination.name} page does not support deposit preparation.`,
             });
         }
 
@@ -1261,15 +1282,15 @@
 
         try {
             helperResult =
-                await dom.pages.invoke(
-                    helper,
-                    PREPARE_CAPABILITY,
-                    amount,
-                    {
-                        highlightSubmit:
-                            highlightSubmitControl,
-                    }
-                );
+                await page
+                    .deposit
+                    .prepare(
+                        amount,
+                        {
+                            highlightSubmit:
+                                highlightSubmitControl,
+                        }
+                    );
         } catch (error) {
             metrics
                 .helperPreparationFailures +=
@@ -1287,7 +1308,7 @@
 
                 helperResult: {
                     reason:
-                        "helper-threw",
+                        "page-api-threw",
 
                     error:
                         metrics.lastError,
@@ -1306,11 +1327,11 @@
                 amount,
 
                 reason:
-                    "helper-threw",
+                    "page-api-threw",
 
                 message:
                     error?.message ||
-                    `The ${destination.name} helper failed.`,
+                    `The ${destination.name} Page API call failed.`,
 
                 helperResult: {
                     error:
@@ -1340,7 +1361,7 @@
             });
 
             recordActivity(
-                "helper-preparation-failed",
+                "page-preparation-failed",
                 {
                     destination:
                         destination.id,
@@ -1367,11 +1388,11 @@
 
                 reason:
                     helperResult?.reason ||
-                    "helper-preparation-failed",
+                    "page-preparation-failed",
 
                 message:
                     helperResult?.message ||
-                    `The ${destination.name} helper could not prepare the deposit.`,
+                    `The ${destination.name} page could not prepare the deposit.`,
 
                 helperResult:
                     cloneValue(
@@ -1408,7 +1429,7 @@
                     "value-verification-failed",
 
                 message:
-                    "The page helper did not confirm the requested deposit amount.",
+                    "The page did not confirm the requested deposit amount.",
 
                 helperResult:
                     cloneValue(
@@ -1451,6 +1472,9 @@
                     false,
 
                 submitHighlighted,
+
+                abstraction:
+                    "page-api",
             }
         );
 
@@ -1470,6 +1494,9 @@
                 helperId,
 
                 submitHighlighted,
+
+                abstraction:
+                    "page-api",
             }
         );
 
@@ -1973,8 +2000,8 @@
                 navigation:
                     Boolean(navigation),
 
-                dom:
-                    Boolean(dom),
+                pageApi:
+                    Boolean(pageApi),
 
                 storage:
                     Boolean(storage),
@@ -2024,31 +2051,43 @@
             },
 
             helperIntegration: {
-                pageSubsystemAvailable:
+                abstraction:
+                    "page-api",
+
+                pageApiAvailable:
                     Boolean(
-                        dom.pages
+                        pageApi
                     ),
 
-                frameworkAvailable:
-                    typeof dom.pages.can ===
-                        "function" &&
-                    typeof dom.pages.invoke ===
-                        "function",
+                frameworkHidden:
+                    true,
 
                 capability:
                     PREPARE_CAPABILITY,
 
                 navigationSubscriptionId,
 
-                registeredHelpers:
-                    dom.pages
-                        .listHelpers(),
+                registeredPages:
+                    pageApi
+                        .list()
+                        .map(
+                            page =>
+                                page.id
+                        ),
 
                 factionBankAvailable:
-                    dom.pages
-                        .hasHelper(
+                    Boolean(
+                        pageApi.get(
                             "faction-bank"
-                        ),
+                        )
+                    ),
+
+                personalVaultAvailable:
+                    Boolean(
+                        pageApi.get(
+                            "personal-vault"
+                        )
+                    ),
 
                 destinationMappings: {
                     ...DEFAULT_HELPER_ID_BY_DESTINATION,
@@ -2143,6 +2182,12 @@
 
             pageHelperIntegration:
                 true,
+            
+            pageApiIntegration:
+                true,
+
+            pageHelperFrameworkAccess:
+                false,
 
             preparationPublic:
                 true,
@@ -2196,9 +2241,16 @@
 
             navigationSubscriptionId,
 
-            registeredHelpers:
-                dom.pages
-                    .listHelpers(),
+            pageApiIntegration:
+                true,
+
+            registeredPages:
+                pageApi
+                    .list()
+                    .map(
+                        page =>
+                            page.id
+                    ),
 
             dependencySource:
                 "TACTIC.use",
