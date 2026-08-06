@@ -16,7 +16,8 @@
  * - Enforce deposit preparation capabilities
  * - Resolve verified deposit destinations
  * - Navigate to deposit destinations when necessary
- * - Preserve pending preparation across full-page navigation
+ * - Preserve pending preparation across navigation
+ * - Resume pending preparation after startup or SPA navigation
  * - Resolve registered DOM page helpers
  * - Ask page helpers to fill and highlight deposit controls
  * - Notify the user when a deposit is ready for manual review
@@ -100,6 +101,8 @@
         !capabilities ||
         !depositDestinations ||
         !navigation ||
+        typeof navigation.subscribe !==
+            "function" ||
         !dom ||
         !dom.pages
     ) {
@@ -150,6 +153,18 @@
         navigationResumes:
             0,
 
+        navigationEventsHandled:
+            0,
+
+        resumeRequests:
+            0,
+
+        resumeSkippedInProgress:
+            0,
+
+        resumeWithoutPending:
+            0,
+
         authorizationFailures:
             0,
 
@@ -189,6 +204,12 @@
         lastPreparedAt:
             null,
 
+        lastResumeAt:
+            null,
+
+        lastResumeReason:
+            null,
+
         lastDestination:
             null,
 
@@ -204,6 +225,12 @@
         lastError:
             null,
     };
+
+    let resumeInProgress =
+        false;
+
+    let navigationSubscriptionId =
+        null;
 
     function cloneValue(
         value
@@ -371,6 +398,10 @@
 
                     prepared:
                         metrics.prepared,
+
+                    resumeInProgress,
+
+                    navigationSubscriptionId,
 
                     pending:
                         Boolean(
@@ -1614,108 +1645,178 @@
         });
     }
 
-    async function resumePending() {
-        const pending =
-            getPendingPreparation();
-
-        if (!pending) {
-            return null;
-        }
-
-        const amount =
-            normalizeAmount(
-                pending.amount
-            );
-
-        if (!amount) {
-            clearPendingPreparation();
-
-            metrics.validationFailures +=
-                1;
-
-            return createResult({
-                destination:
-                    pending.destination ||
-                    null,
-
-                amount:
-                    null,
-
-                reason:
-                    "invalid-pending-amount",
-
-                message:
-                    "The pending deposit amount is invalid and was cleared.",
-            });
-        }
-
-        const validation =
-            validateDestination(
-                pending.destination,
-                amount
-            );
-
-        if (!validation.valid) {
-            return validation.result;
-        }
-
-        const {
-            destination,
-        } = validation;
-
-        const helperId =
-            pending.helperId ||
-            validation.helperId;
-
-        if (
-            !navigation.isCurrent(
-                destination.routeId
-            )
-        ) {
-            return null;
-        }
-
-        metrics.navigationResumes +=
+    async function resumePending(
+        options = {}
+    ) {
+        metrics.resumeRequests +=
             1;
 
-        metrics.lastDestination =
-            destination.id;
+        if (resumeInProgress) {
+            metrics
+                .resumeSkippedInProgress +=
+                1;
 
-        metrics.lastHelperId =
-            helperId;
+            return null;
+        }
 
-        metrics.lastAmount =
-            amount;
+        resumeInProgress =
+            true;
 
-        recordActivity(
-            "navigation-resume",
-            {
-                destination:
-                    destination.id,
+        metrics.lastResumeAt =
+            Date.now();
 
+        metrics.lastResumeReason =
+            typeof options.reason ===
+                "string" &&
+            options.reason.trim()
+                ? options.reason.trim()
+                : "manual";
+
+        try {
+            const pending =
+                getPendingPreparation();
+
+            if (!pending) {
+                metrics.resumeWithoutPending +=
+                    1;
+
+                return null;
+            }
+
+            const amount =
+                normalizeAmount(
+                    pending.amount
+                );
+
+            if (!amount) {
+                clearPendingPreparation();
+
+                metrics.validationFailures +=
+                    1;
+
+                return createResult({
+                    destination:
+                        pending.destination ||
+                        null,
+
+                    amount:
+                        null,
+
+                    reason:
+                        "invalid-pending-amount",
+
+                    message:
+                        "The pending deposit amount is invalid and was cleared.",
+                });
+            }
+
+            const validation =
+                validateDestination(
+                    pending.destination,
+                    amount
+                );
+
+            if (!validation.valid) {
+                return validation.result;
+            }
+
+            const {
+                destination,
+            } = validation;
+
+            const helperId =
+                pending.helperId ||
+                validation.helperId;
+
+            if (
+                !navigation.isCurrent(
+                    destination.routeId
+                )
+            ) {
+                return null;
+            }
+
+            metrics.navigationResumes +=
+                1;
+
+            metrics.lastDestination =
+                destination.id;
+
+            metrics.lastHelperId =
+                helperId;
+
+            metrics.lastAmount =
+                amount;
+
+            recordActivity(
+                "navigation-resume",
+                {
+                    destination:
+                        destination.id,
+
+                    helperId,
+
+                    resumeReason:
+                        metrics
+                            .lastResumeReason,
+                }
+            );
+
+            return await prepareCurrentPage({
+                destination,
                 helperId,
+                amount,
+
+                timeoutMs:
+                    normalizeTimeout(
+                        pending.timeoutMs
+                    ),
+
+                highlightSubmitControl:
+                    pending
+                        .highlightSubmit !==
+                    false,
+
+                notify:
+                    pending.notify !==
+                    false,
+            });
+        } finally {
+            resumeInProgress =
+                false;
+        }
+    }
+
+    function handleNavigationEvent(
+        navigationEvent
+    ) {
+        metrics.navigationEventsHandled +=
+            1;
+
+        resumePending({
+            reason:
+                navigationEvent?.reason ||
+                "navigation-event",
+        }).catch(
+            (error) => {
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+
+                logger?.error(
+                    "Pending deposit preparation could not resume after navigation",
+                    {
+                        navigationEvent:
+                            cloneValue(
+                                navigationEvent
+                            ),
+
+                        error,
+                    }
+                );
             }
         );
-
-        return prepareCurrentPage({
-            destination,
-            helperId,
-            amount,
-
-            timeoutMs:
-                normalizeTimeout(
-                    pending.timeoutMs
-                ),
-
-            highlightSubmitControl:
-                pending
-                    .highlightSubmit !==
-                false,
-
-            notify:
-                pending.notify !==
-                false,
-        });
     }
 
     async function submit() {
@@ -1766,11 +1867,32 @@
                     pending
                 ),
 
+            resume: {
+                inProgress:
+                    resumeInProgress,
+
+                navigationSubscriptionId,
+
+                subscribed:
+                    Number.isSafeInteger(
+                        navigationSubscriptionId
+                    ),
+
+                lastResumeAt:
+                    metrics.lastResumeAt,
+
+                lastResumeReason:
+                    metrics
+                        .lastResumeReason,
+            },
+
             helperIntegration: {
                 pageSubsystemAvailable:
                     Boolean(
                         dom.pages
                     ),
+
+                navigationSubscriptionId,
 
                 registeredHelpers:
                     dom.pages
@@ -1870,6 +1992,9 @@
             navigationSupported:
                 true,
 
+            eventDrivenResume:
+                true,
+
             pageHelperIntegration:
                 true,
 
@@ -1888,35 +2013,39 @@
     });
 
     /*
-     * After a full-page navigation, the userscript starts again.
-     * Resume the pending preparation only after all synchronous
-     * loader files have registered their services and helpers.
+     * The initial event replaces the old startup queueMicrotask.
+     *
+     * It attempts to resume a pending preparation after the
+     * service has loaded, while later events handle Torn SPA
+     * navigation without requiring a browser refresh.
      */
-    queueMicrotask(
-        () => {
-            resumePending().catch(
-                (error) => {
-                    metrics.lastError =
-                        createErrorSnapshot(
-                            error
-                        );
+    navigationSubscriptionId =
+        navigation.subscribe(
+            handleNavigationEvent,
+            {
+                emitInitial:
+                    true,
 
-                    logger?.error(
-                        "Pending deposit preparation could not resume",
-                        {
-                            error,
-                        }
-                    );
-                }
-            );
-        }
-    );
+                metadata: {
+                    service:
+                        "deposit",
+
+                    purpose:
+                        "resume-pending-deposit",
+                },
+            }
+        );
 
     logger?.info(
         "Deposit service loaded",
         {
             pageHelperIntegration:
                 true,
+
+            eventDrivenResume:
+                true,
+
+            navigationSubscriptionId,
 
             registeredHelpers:
                 dom.pages
