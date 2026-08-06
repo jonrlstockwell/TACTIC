@@ -2321,7 +2321,7 @@
         "module-load"
     );
 
-    logger?.warn(
+    logger?.info(
         "Protection development automatic deposit module loaded",
         {
             developerUserId:
