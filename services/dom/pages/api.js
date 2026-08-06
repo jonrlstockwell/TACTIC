@@ -907,6 +907,38 @@
     TACTIC.services.pageApi =
         pageApi;
 
+    TACTIC.dependencies.register(
+        "pageapi",
+        pageApi,
+        {
+            replace:
+                true,
+
+            metadata: {
+                type:
+                    "service",
+
+                service:
+                    "page-api",
+
+                path:
+                    "TACTIC.services.pageApi",
+
+                publicApi:
+                    "TACTIC.page",
+            },
+        }
+    );
+    
+    TACTIC.dependencies.alias(
+        "page-api",
+        "pageapi",
+        {
+            replace:
+                true,
+        }
+    );
+
     try {
         Object.defineProperty(
             TACTIC,

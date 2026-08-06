@@ -80,7 +80,7 @@
 // Deposit-page DOM helpers.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=6
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/api.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/api.js?v=3
 
 // Browser and Torn SPA navigation detection.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/navigation.js?v=2
