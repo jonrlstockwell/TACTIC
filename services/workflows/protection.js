@@ -21,8 +21,10 @@
  * - Never submits or confirms a deposit
  *
  * Dependencies:
+ * - core/dependencies.js
  * - services/workflows/index.js
  * - services/actions/deposit.js
+ * - services/deposit/index.js
  * - repositories/user/index.js
  * - modules/protection/settings.js
  * - modules/protection/rules.js
@@ -44,29 +46,50 @@
         return;
     }
 
-    const {
-        workflows,
-        actions,
-        deposit,
-        logger,
-    } = TACTIC.services;
-
-    const userRepository =
-        TACTIC.repositories?.user;
-
-    const protection =
-        TACTIC.protection;
-
-    if (!workflows) {
+    if (
+        typeof TACTIC.use !==
+        "function"
+    ) {
         console.error(
-            "[TACTIC Protection Workflows] Workflow service is unavailable."
+            "[TACTIC Protection Workflows] Dependency Registry is unavailable."
         );
 
         return;
     }
 
+    let dependencies;
+
+    try {
+        dependencies =
+            TACTIC.use([
+                "workflows",
+                "actions",
+                "deposit",
+                "logger",
+                "user",
+                "protection",
+            ]);
+    } catch (error) {
+        console.error(
+            "[TACTIC Protection Workflows] Required dependencies are unavailable.",
+            error
+        );
+
+        return;
+    }
+
+    const {
+        workflows,
+        actions,
+        deposit,
+        logger,
+        user:
+            userRepository,
+        protection,
+    } = dependencies;
+
     if (
-        !actions?.has(
+        !actions.has(
             "deposit.prepare"
         )
     ) {
@@ -77,17 +100,9 @@
         return;
     }
 
-    if (!userRepository) {
-        console.error(
-            "[TACTIC Protection Workflows] User Repository is unavailable."
-        );
-
-        return;
-    }
-
     if (
-        !protection?.settings ||
-        !protection?.rules
+        !protection.settings ||
+        !protection.rules
     ) {
         console.error(
             "[TACTIC Protection Workflows] Protection settings or rules are unavailable."
@@ -281,7 +296,7 @@
                     }) {
                         context.destination =
                             deposit
-                                ?.getDestination(
+                                .getDestination(
                                     context
                                         .evaluation
                                         .destination
@@ -328,9 +343,9 @@
                         return (
                             context.evaluation
                                 ?.shouldDeposit ===
-                            true &&
+                                true &&
                             context.destination !==
-                            null
+                                null
                         );
                     },
 
@@ -434,12 +449,15 @@
         }
     );
 
-    logger?.info(
+    logger.info(
         "Protection workflows registered",
         {
             workflows: [
                 "protection.prepare-deposit",
             ],
+
+            dependencySource:
+                "TACTIC.use",
         }
     );
 })();

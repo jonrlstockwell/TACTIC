@@ -137,7 +137,7 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/rules.js?v=2
 
 // Protection workflow requires Workflows and deposit.prepare.
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/protection.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/protection.js?v=2
 
 // Protection application requires settings, rules, User Repository,
 // Actions, Deposit Service, notifications, and the drawer.
