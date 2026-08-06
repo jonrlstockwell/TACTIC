@@ -1106,31 +1106,32 @@
 
     logger.info(
         "Faction Bank DOM page helper loaded",
-    {
-        helperId: HELPER_ID,
+        {
+            helperId:
+                HELPER_ID,
 
-        routeId: "deposit:faction-bank",
+            routeId:
+                "deposit:faction-bank",
 
-        capabilitySource: "explicit",
+            capabilitySource:
+                "explicit",
 
-        capabilities: [
-            "page.ready",
-            "page.wait-until-ready",
-            "page.inspect",
-            "amount.read",
-            "amount.set",
+            capabilities: [
+                "page.ready",
+                "page.wait-until-ready",
+                "page.inspect",
+                "amount.read",
+                "amount.set",
+                "submit.locate",
+                "submit.highlight",
+                "deposit.prepare",
+            ],
 
-            // Include ONLY if your helper actually has it
-            "amount.maximum",
+            submitsForm:
+                false,
 
-            "submit.locate",
-            "submit.highlight",
-            "deposit.prepare",
-        ],
-
-        submitsForm: false,
-
-        confirmsTransaction: false,
-    }
-);
+            confirmsTransaction:
+                false,
+        }
+    );
 })();
