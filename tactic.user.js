@@ -1,168 +1,88 @@
 // ==UserScript==
 // @name         TACTIC Modular Dev
-// @namespace    local.torn.tactic
-// @version      0.2.0-dev
-// @description  Modular development build of the Torn Assistant & Companion Toolkit.
-// @author       XZer0
+// @namespace    https://github.com/jonrlstockwell/TACTIC
+// @version      0.3.0-dev
+// @description  Torn Assistant & Companion Toolkit (Development Build)
+// @author       Jon Stockwell
 // @match        https://www.torn.com/*
-//
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_deleteValue
-// @grant        GM_registerMenuCommand
-// @grant        GM_notification
-// @grant        unsafeWindow
-//
-//
+// @grant        none
+// @run-at       document-start
+
 // ============================================================
-// TACTIC CORE FOUNDATION
+// CORE
 // ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=1
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/logger.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/utilities.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/errors.js?v=1
-//
-//
-// ============================================================
-// RUNTIME FOUNDATION
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/scheduler/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/capabilities/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/state/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/jobs/index.js?v=1
-//
-//
-// ============================================================
-// DOM AND SELECTOR SERVICES
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=4
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/navigation.js?v=2
-//
-//
-// ============================================================
-// NAVIGATION SERVICE
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/navigation/index.js?v=2
-//
-//
-// ============================================================
-// GENERAL APPLICATION SERVICES
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/settings/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/notifications/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/transactions/index.js?v=1
-//
-//
-// ============================================================
-// SHARED DEPOSIT SERVICE
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=4
-//
-//
-// ============================================================
-// ACTION SERVICE
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/actions/deposit.js?v=2
-//
-//
-// ============================================================
-// WORKFLOW SERVICE
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/index.js?v=1
-//
-//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/modules.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/settings.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/actions.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/workflows.js?v=2
+
 // ============================================================
 // REPOSITORIES
 // ============================================================
-//
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=2
-//
-//
+
 // ============================================================
-// LIFECYCLE
+// DOM AND SELECTOR SERVICES
 // ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/lifecycle.js?v=1
-//
-//
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=3
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/navigation.js?v=2
+
 // ============================================================
-// USER INTERFACE
+// DIAGNOSTICS SERVICE
 // ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=2
-//
-//
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/diagnostics/index.js?v=1
+
+// ============================================================
+// DEPOSIT SERVICES
+// ============================================================
+
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/destinations.js?v=5
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/deposit/index.js?v=4
+
 // ============================================================
 // PROTECTION APPLICATION
 // ============================================================
-//
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/settings.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/rules.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/workflows/protection.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=2
-//
-//
-// ============================================================
-// DIAGNOSTICS SERVICE
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/diagnostics/index.js?v=1
-//
-//
+
 // ============================================================
 // DEVELOPER DASHBOARD
 // Developer build only.
 // ============================================================
-//
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/dashboard.js?v=3
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/framework.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/runtime.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/services.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/repositories.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/state.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/scheduler.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/jobs.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/actions.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/workflows.js?v=3
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/modules.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/diagnostics.js?v=8
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/state.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/jobs.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/actions.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/sections/workflows.js?v=2
 
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/index.js?v=5
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/developer/live-refresh.js?v=3
-//
-//
-// ============================================================
-// BOOTSTRAP — MUST REMAIN LAST
-// ============================================================
-//
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/app/bootstrap.js?v=4
-//
-// @run-at       document-idle
+
 // ==/UserScript==
 
 (() => {
