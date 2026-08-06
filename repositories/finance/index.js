@@ -1702,6 +1702,32 @@
             const helperSnapshot =
                 helper.getSnapshot();
 
+            /*
+             * The helper remains registered after navigating away
+             * from the Investment Bank, but its page snapshot is
+             * no longer ready. Treat that as a page-unavailable
+             * condition so the repository preserves the last
+             * successful live snapshot instead of replacing it
+             * with empty data.
+             */
+            if (
+                helperSnapshot
+                    ?.ready !==
+                true
+            ) {
+                metrics.bankUnavailableReads +=
+                    1;
+
+                return createUnavailableBankSnapshot(
+                    helperSnapshot
+                        ?.readiness
+                        ?.reason ||
+                    helperSnapshot
+                        ?.reason ||
+                    "investment-bank-page-unavailable"
+                );
+            }
+
             return createBankSnapshot(
                 helperSnapshot,
                 reason
