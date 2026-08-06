@@ -907,8 +907,32 @@
     TACTIC.services.pageApi =
         pageApi;
 
-    TACTIC.page =
-        pageApi;
+    try {
+        Object.defineProperty(
+            TACTIC,
+            "page",
+            {
+                configurable:
+                    true,
+
+                enumerable:
+                    true,
+
+                writable:
+                    false,
+
+                value:
+                    pageApi,
+            }
+        );
+    } catch (error) {
+        logger?.warn(
+            "Page API could not be exposed at TACTIC.page",
+            {
+                error,
+            }
+        );
+    }
 
     /*
      * Convenience alias beneath the existing DOM service.
