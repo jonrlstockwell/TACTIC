@@ -1442,6 +1442,78 @@
                 ?.recommendation
                 ?.recommendation;
 
+        const activeInvestment =
+            bank.activeInvestment;
+
+        const activeEstimate =
+            bank.analysis
+                ?.activeEstimate;
+
+        const recommendationMatchesActiveTerm =
+            activeInvestment
+                ?.active ===
+                true &&
+            recommendation
+                ?.option
+                ?.id &&
+            recommendation
+                .option
+                .id ===
+                activeInvestment
+                    ?.selectedTerm
+                    ?.id;
+
+        /*
+         * While displaying the same term as the active
+         * investment, keep the principal, profit, and payout
+         * internally consistent with Torn's verified payout.
+         *
+         * The live rate remains available elsewhere in the
+         * recommendation data, but it is not used to reconstruct
+         * the active investment payout.
+         */
+        const displayedPrincipal =
+            recommendationMatchesActiveTerm &&
+            Number.isFinite(
+                activeEstimate
+                    ?.principal
+                    ?.value
+            )
+                ? activeEstimate
+                      .principal
+                      .value
+                : recommendation
+                      ?.principal
+                      ?.value;
+
+        const displayedProfit =
+            recommendationMatchesActiveTerm &&
+            Number.isFinite(
+                activeEstimate
+                    ?.profit
+                    ?.value
+            )
+                ? activeEstimate
+                      .profit
+                      .value
+                : recommendation
+                      ?.profit
+                      ?.value;
+
+        const displayedPayout =
+            recommendationMatchesActiveTerm &&
+            Number.isFinite(
+                activeInvestment
+                    ?.payout
+                    ?.value
+            )
+                ? activeInvestment
+                      .payout
+                      .value
+                : recommendation
+                      ?.payout
+                      ?.value;
+
         const panel =
             createElement(
                 "div",
@@ -1573,10 +1645,11 @@
 
         summaryGrid.append(
             createCard(
-                "Comparison Principal",
+                recommendationMatchesActiveTerm
+                    ? "Estimated Principal"
+                    : "Comparison Principal",
                 formatMoney(
-                    principal
-                        ?.value
+                    displayedPrincipal
                 ),
                 {
                     badge: {
@@ -1608,11 +1681,11 @@
             ),
 
             createCard(
-                "Projected Profit",
+                recommendationMatchesActiveTerm
+                    ? "Estimated Active Profit"
+                    : "Projected Profit",
                 formatMoney(
-                    recommendation
-                        .profit
-                        ?.value
+                    displayedProfit
                 ),
                 {
                     color:
@@ -1621,12 +1694,29 @@
             ),
 
             createCard(
-                "Projected Payout",
+                recommendationMatchesActiveTerm
+                    ? "Verified Active Payout"
+                    : "Projected Payout",
                 formatMoney(
-                    recommendation
-                        .payout
-                        ?.value
-                )
+                    displayedPayout
+                ),
+                recommendationMatchesActiveTerm
+                    ? {
+                          badge: {
+                              text:
+                                  "Verified",
+
+                              background:
+                                  "rgba(76,175,80,.10)",
+
+                              border:
+                                  "rgba(76,175,80,.25)",
+
+                              color:
+                                  "#a5d6a7",
+                          },
+                      }
+                    : {}
             ),
 
             createCard(
