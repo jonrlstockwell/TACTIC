@@ -648,7 +648,7 @@
         return button;
     }
 
-        function createSectionHeading(
+    function createSectionHeading(
         text
     ) {
         return createElement(
@@ -1300,7 +1300,7 @@
         }
     }
 
-        function render(
+    function render(
         container
     ) {
         metrics.renders +=
