@@ -2231,77 +2231,71 @@
                     : "Investment Bank data is currently unavailable"
             );
 
-        const bankStatus =
+        let bankStatus;
+
+        if (
             bank?.live ===
             true
-                ? {
-                      label:
-                          "Live",
+        ) {
+            bankStatus = {
+                label:
+                    "Live",
 
-                      background:
-                          "rgba(76,175,80,.10)",
+                background:
+                    "rgba(76,175,80,.10)",
 
-                      border:
-                          "rgba(76,175,80,.25)",
+                border:
+                    "rgba(76,175,80,.25)",
 
-                      color:
-                          "#a5d6a7",
-                  }
-                : bank?.cached ===
-                  true
-                    ? {
-                          label:
-                              "Cached",
+                color:
+                    "#a5d6a7",
+            };
+        } else if (
+            bank?.cached ===
+            true
+        ) {
+            bankStatus = {
+                label:
+                    "Cached",
 
-                          background:
-                              "rgba(245,166,35,.08)",
+                background:
+                    "rgba(245,166,35,.08)",
 
-                          border:
-                              "rgba(245,166,35,.25)",
+                border:
+                    "rgba(245,166,35,.25)",
 
-                          color:
-                              "#ffcc80",
-                      }
-                    : {
-                          label:
-                              "Unavailable",
+                color:
+                    "#ffcc80",
+            };
+        } else {
+            bankStatus = {
+                label:
+                    "Unavailable",
 
-                          background:
-                              "rgba(220,70,70,.08)",
+                background:
+                    "rgba(220,70,70,.08)",
 
-                          border:
-                              "rgba(220,70,70,.25)",
+                border:
+                    "rgba(220,70,70,.25)",
 
-                          color:
-                              "#ff9d9d",
-                      };
+                color:
+                    "#ff9d9d",
+            };
+        }
 
         sectionHeader.header.appendChild(
             createBadge(
                 bankStatus.label,
-                bankStatus
-            )
-        );
-                    ? {
-                          background:
-                              "rgba(76,175,80,.10)",
+                {
+                    background:
+                        bankStatus.background,
 
-                          border:
-                              "rgba(76,175,80,.25)",
+                    border:
+                        bankStatus.border,
 
-                          color:
-                              "#a5d6a7",
-                      }
-                    : {
-                          background:
-                              "rgba(220,70,70,.08)",
-
-                          border:
-                              "rgba(220,70,70,.25)",
-
-                          color:
-                              "#ff9d9d",
-                      }
+                    color:
+                        bankStatus.color,
+                }
             )
         );
 
