@@ -5,7 +5,10 @@
 // @description  Torn Assistant & Companion Toolkit (Development Build)
 // @author       Jon Stockwell
 // @match        https://www.torn.com/*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        unsafeWindow
 // @run-at       document-start
 
 // ============================================================
