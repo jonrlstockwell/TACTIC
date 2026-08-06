@@ -8,8 +8,8 @@
  * modules/protection/dev-auto-prepare.js
  *
  * Purpose:
- * Automatically prepares and submits Protection deposits in the
- * development build.
+ * Automatically prepares, submits, and confirms Protection
+ * deposits in the development build.
  *
  * Responsibilities:
  * - Watch Protection evaluations
@@ -17,6 +17,8 @@
  * - Navigate through the normal Deposit service when required
  * - Verify the prepared page and submit control
  * - Click the verified Deposit button
+ * - Verify the confirmation amount
+ * - Click the exact affirmative confirmation control
  * - Prevent duplicate or concurrent submissions
  *
  * Safety:
@@ -25,7 +27,8 @@
  * - Destination must be explicitly allowlisted
  * - Deposit preparation must succeed first
  * - Submit control must be enabled and have an approved label
- * - Confirmation controls are never clicked
+ * - Confirmation amount must exactly match the requested amount
+ * - Confirmation control must use the verified aria-label
  *
  * ============================================================
  */
@@ -123,8 +126,17 @@
     const DUPLICATE_COOLDOWN_MS =
         30_000;
 
-    const POST_CLICK_COOLDOWN_MS =
+    const POST_SUBMISSION_COOLDOWN_MS =
         5_000;
+
+    const CONFIRMATION_TIMEOUT_MS =
+        5_000;
+
+    const CONFIRMATION_POLL_INTERVAL_MS =
+        100;
+
+    const CONFIRMATION_SETTLE_DELAY_MS =
+        300;
 
     const ALLOWED_DESTINATIONS =
         Object.freeze(
@@ -141,6 +153,9 @@
                 "DEPOSIT MONEY",
             ])
         );
+
+    const CONFIRMATION_SELECTOR =
+        'a.yes[aria-label="Yes, I want to deposit"]';
 
     let active =
         false;
@@ -185,16 +200,28 @@
         preparationsCompleted:
             0,
 
-        submissionAttempts:
-            0,
-
-        submissionsCompleted:
-            0,
-
         preparationFailures:
             0,
 
+        submissionAttempts:
+            0,
+
+        submissionsTriggered:
+            0,
+
         submissionFailures:
+            0,
+
+        confirmationAttempts:
+            0,
+
+        confirmationsCompleted:
+            0,
+
+        confirmationFailures:
+            0,
+
+        depositsCompleted:
             0,
 
         duplicateSkips:
@@ -224,6 +251,12 @@
         lastSubmittedAt:
             null,
 
+        lastConfirmedAt:
+            null,
+
+        lastCompletedAt:
+            null,
+
         lastDestination:
             null,
 
@@ -234,6 +267,9 @@
             null,
 
         lastSubmissionResult:
+            null,
+
+        lastConfirmationResult:
             null,
 
         lastError:
@@ -288,6 +324,19 @@
         }
     }
 
+    function delay(
+        milliseconds
+    ) {
+        return new Promise(
+            resolve => {
+                globalThis.setTimeout(
+                    resolve,
+                    milliseconds
+                );
+            }
+        );
+    }
+
     function createAttemptKey(
         destination,
         amount
@@ -328,6 +377,36 @@
             )
             .trim()
             .toUpperCase();
+    }
+
+    function parseMoney(
+        value
+    ) {
+        const match =
+            String(
+                value ||
+                ""
+            ).match(
+                /\$([\d,]+)/
+            );
+
+        if (!match) {
+            return null;
+        }
+
+        const amount =
+            Number(
+                match[1].replace(
+                    /,/g,
+                    ""
+                )
+            );
+
+        return Number.isSafeInteger(
+            amount
+        )
+            ? amount
+            : null;
     }
 
     function getPreparedResult(
@@ -402,14 +481,14 @@
 
         if (
             originalControl.matches(
-                "button, input[type='submit'], input[type='button']"
+                "button, input[type='submit'], input[type='button'], a"
             )
         ) {
             return originalControl;
         }
 
         return originalControl.querySelector(
-            "button, input[type='submit'], input[type='button']"
+            "button, input[type='submit'], input[type='button'], a"
         );
     }
 
@@ -546,6 +625,403 @@
         };
     }
 
+    function findConfirmationContext(
+        confirmationControl
+    ) {
+        let current =
+            confirmationControl;
+
+        for (
+            let depth = 0;
+            depth < 10 && current;
+            depth += 1
+        ) {
+            const text =
+                String(
+                    current.textContent ||
+                    ""
+                )
+                    .replace(
+                        /\s+/g,
+                        " "
+                    )
+                    .trim();
+
+            if (
+                /are you sure you want to deposit\s+\$[\d,]+/i.test(
+                    text
+                )
+            ) {
+                return {
+                    element:
+                        current,
+
+                    text,
+                };
+            }
+
+            current =
+                current.parentElement;
+        }
+
+        return {
+            element:
+                null,
+
+            text:
+                "",
+        };
+    }
+
+    function verifyConfirmationControl(
+        control,
+        expectedAmount
+    ) {
+        if (
+            !control ||
+            !(
+                control instanceof
+                HTMLAnchorElement
+            )
+        ) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-control-unavailable",
+            };
+        }
+
+        if (!control.isConnected) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-control-disconnected",
+            };
+        }
+
+        if (!isVisible(control)) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-control-not-visible",
+            };
+        }
+
+        const ariaLabel =
+            String(
+                control.getAttribute(
+                    "aria-label"
+                ) ||
+                ""
+            )
+                .trim()
+                .toLowerCase();
+
+        if (
+            ariaLabel !==
+            "yes, i want to deposit"
+        ) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "unexpected-confirmation-aria-label",
+
+                ariaLabel,
+            };
+        }
+
+        const label =
+            normalizeLabel(
+                control.textContent
+            );
+
+        if (label !== "YES") {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "unexpected-confirmation-label",
+
+                label,
+            };
+        }
+
+        const context =
+            findConfirmationContext(
+                control
+            );
+
+        if (!context.element) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-dialog-unavailable",
+            };
+        }
+
+        const confirmedAmount =
+            parseMoney(
+                context.text
+            );
+
+        if (
+            confirmedAmount ===
+            null
+        ) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-amount-unreadable",
+
+                dialogText:
+                    context.text,
+            };
+        }
+
+        if (
+            confirmedAmount !==
+            expectedAmount
+        ) {
+            return {
+                valid:
+                    false,
+
+                reason:
+                    "confirmation-amount-mismatch",
+
+                expectedAmount,
+
+                confirmedAmount,
+
+                dialogText:
+                    context.text,
+            };
+        }
+
+        return {
+            valid:
+                true,
+
+            reason:
+                "verified",
+
+            label,
+
+            ariaLabel,
+
+            confirmedAmount,
+
+            dialogText:
+                context.text,
+
+            dialogElement:
+                context.element,
+
+            control,
+        };
+    }
+
+    async function confirmDeposit({
+        destination,
+        amount,
+        timeoutMs =
+            CONFIRMATION_TIMEOUT_MS,
+    }) {
+        metrics.confirmationAttempts +=
+            1;
+
+        const startedAt =
+            Date.now();
+
+        while (
+            Date.now() -
+                startedAt <
+            timeoutMs
+        ) {
+            const control =
+                document.querySelector(
+                    CONFIRMATION_SELECTOR
+                );
+
+            if (control) {
+                const verification =
+                    verifyConfirmationControl(
+                        control,
+                        amount
+                    );
+
+                if (!verification.valid) {
+                    metrics.confirmationFailures +=
+                        1;
+
+                    return {
+                        success:
+                            false,
+
+                        confirmed:
+                            false,
+
+                        destination,
+
+                        amount,
+
+                        reason:
+                            verification.reason,
+
+                        verification: {
+                            valid:
+                                false,
+
+                            reason:
+                                verification.reason,
+
+                            label:
+                                verification.label ||
+                                null,
+
+                            ariaLabel:
+                                verification.ariaLabel ||
+                                null,
+
+                            expectedAmount:
+                                verification.expectedAmount ??
+                                amount,
+
+                            confirmedAmount:
+                                verification.confirmedAmount ??
+                                null,
+
+                            dialogText:
+                                verification.dialogText ||
+                                null,
+                        },
+                    };
+                }
+
+                const verifiedControl =
+                    verification.control;
+
+                verifiedControl.focus();
+
+                HTMLElement.prototype.click.call(
+                    verifiedControl
+                );
+
+                await delay(
+                    CONFIRMATION_SETTLE_DELAY_MS
+                );
+
+                const stillPresent =
+                    document.querySelector(
+                        CONFIRMATION_SELECTOR
+                    );
+
+                if (
+                    stillPresent &&
+                    stillPresent.isConnected &&
+                    isVisible(
+                        stillPresent
+                    )
+                ) {
+                    metrics.confirmationFailures +=
+                        1;
+
+                    return {
+                        success:
+                            false,
+
+                        confirmed:
+                            false,
+
+                        destination,
+
+                        amount,
+
+                        reason:
+                            "confirmation-remained-visible",
+
+                        clicked:
+                            true,
+
+                        waitedMs:
+                            Date.now() -
+                            startedAt,
+                    };
+                }
+
+                metrics.confirmationsCompleted +=
+                    1;
+
+                metrics.lastConfirmedAt =
+                    Date.now();
+
+                return {
+                    success:
+                        true,
+
+                    confirmed:
+                        true,
+
+                    destination,
+
+                    amount,
+
+                    confirmedAmount:
+                        verification.confirmedAmount,
+
+                    reason:
+                        "deposit-confirmation-clicked",
+
+                    clickedAt:
+                        metrics.lastConfirmedAt,
+
+                    waitedMs:
+                        Date.now() -
+                        startedAt,
+                };
+            }
+
+            await delay(
+                CONFIRMATION_POLL_INTERVAL_MS
+            );
+        }
+
+        metrics.confirmationFailures +=
+            1;
+
+        return {
+            success:
+                false,
+
+            confirmed:
+                false,
+
+            destination,
+
+            amount,
+
+            reason:
+                "confirmation-timeout",
+
+            waitedMs:
+                Date.now() -
+                startedAt,
+        };
+    }
+
     async function submitPreparedDeposit({
         destination,
         amount,
@@ -567,6 +1043,9 @@
                 submitted:
                     false,
 
+                confirmed:
+                    false,
+
                 reason:
                     "current-page-unavailable",
             };
@@ -581,6 +1060,9 @@
                     false,
 
                 submitted:
+                    false,
+
+                confirmed:
                     false,
 
                 reason:
@@ -606,6 +1088,9 @@
                 submitted:
                     false,
 
+                confirmed:
+                    false,
+
                 reason:
                     "submit-location-unsupported",
             };
@@ -627,12 +1112,15 @@
                 submitted:
                     false,
 
+                confirmed:
+                    false,
+
                 reason:
                     verification.reason,
 
                 verification: {
                     valid:
-                        verification.valid,
+                        false,
 
                     reason:
                         verification.reason,
@@ -642,8 +1130,7 @@
                         null,
 
                     allowedLabels:
-                        verification
-                            .allowedLabels ||
+                        verification.allowedLabels ||
                         [
                             ...ALLOWED_SUBMIT_LABELS,
                         ],
@@ -659,64 +1146,84 @@
 
         verifiedControl.focus();
 
-        const form =
-            verifiedControl.closest(
-                "form"
-            );
-
         /*
-         * This is the only automatic transaction action.
-         * No confirmation control is searched for or clicked.
+         * Trigger the verified deposit button.
+         * Torn should then display its confirmation dialog.
          */
         HTMLElement.prototype.click.call(
             verifiedControl
         );
 
-        /*
-         * Some Torn controls may rely on a form submit event.
-         * Retry with requestSubmit only if the original control
-         * and form remain connected after the click.
-         */
-        if (
-            form &&
-            typeof form.requestSubmit ===
-                "function"
-        ) {
-            globalThis.setTimeout(
-                () => {
-                    if (
-                        verifiedControl
-                            .isConnected &&
-                        form.isConnected
-                    ) {
-                        try {
-                            form.requestSubmit(
-                                verifiedControl
-                            );
-                        } catch (error) {
-                            logger?.warn(
-                                "Developer auto-deposit requestSubmit fallback failed",
-                                {
-                                    destination,
-                                    amount,
-                                    error,
-                                }
-                            );
-                        }
-                    }
-                },
-                150
+        metrics.submissionsTriggered +=
+            1;
+
+        metrics.lastSubmittedAt =
+            Date.now();
+
+        const confirmationResult =
+            await confirmDeposit({
+                destination,
+                amount,
+            });
+
+        metrics.lastConfirmationResult =
+            cloneValue(
+                confirmationResult
             );
+
+        if (
+            confirmationResult
+                .success !==
+                true ||
+            confirmationResult
+                .confirmed !==
+                true
+        ) {
+            metrics.submissionFailures +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                submitted:
+                    true,
+
+                confirmed:
+                    false,
+
+                destination,
+
+                amount,
+
+                submitLabel:
+                    verification.label,
+
+                reason:
+                    confirmationResult.reason,
+
+                confirmationResult,
+
+                safety: {
+                    submitClicked:
+                        true,
+
+                    confirmationClicked:
+                        confirmationResult
+                            ?.clicked ===
+                            true,
+                },
+            };
         }
 
         lastSubmissionAt =
             Date.now();
 
-        metrics.submissionsCompleted +=
-            1;
-
-        metrics.lastSubmittedAt =
+        metrics.lastCompletedAt =
             lastSubmissionAt;
+
+        metrics.depositsCompleted +=
+            1;
 
         return {
             success:
@@ -726,7 +1233,7 @@
                 true,
 
             confirmed:
-                false,
+                true,
 
             destination,
 
@@ -736,17 +1243,19 @@
                 verification.label,
 
             reason:
-                "deposit-submission-triggered",
+                "deposit-completed",
 
-            clickedAt:
+            completedAt:
                 lastSubmissionAt,
+
+            confirmationResult,
 
             safety: {
                 submitClicked:
                     true,
 
                 confirmationClicked:
-                    false,
+                    true,
             },
         };
     }
@@ -772,7 +1281,7 @@
         if (
             Date.now() -
                 lastSubmissionAt <
-            POST_CLICK_COOLDOWN_MS
+            POST_SUBMISSION_COOLDOWN_MS
         ) {
             metrics.cooldownSkips +=
                 1;
@@ -911,8 +1420,8 @@
                     1;
 
                 /*
-                 * Clear the duplicate key so the next page check
-                 * can complete submission after navigation.
+                 * Permit the next check on the destination page
+                 * to complete submission after navigation.
                  */
                 lastAttemptKey =
                     null;
@@ -960,11 +1469,11 @@
                     true ||
                 submissionResult
                     .submitted !==
+                    true ||
+                submissionResult
+                    .confirmed !==
                     true
             ) {
-                metrics.submissionFailures +=
-                    1;
-
                 return submissionResult;
             }
 
@@ -1005,6 +1514,9 @@
                 submitted:
                     false,
 
+                confirmed:
+                    false,
+
                 reason:
                     "auto-deposit-threw",
 
@@ -1037,7 +1549,7 @@
             globalThis.setInterval(
                 () => {
                     check().catch(
-                        (error) => {
+                        error => {
                             metrics.lastError =
                                 createErrorSnapshot(
                                     error
@@ -1116,14 +1628,20 @@
                 ...ALLOWED_SUBMIT_LABELS,
             ],
 
+            confirmationSelector:
+                CONFIRMATION_SELECTOR,
+
             checkIntervalMs:
                 CHECK_INTERVAL_MS,
 
             duplicateCooldownMs:
                 DUPLICATE_COOLDOWN_MS,
 
-            postClickCooldownMs:
-                POST_CLICK_COOLDOWN_MS,
+            postSubmissionCooldownMs:
+                POST_SUBMISSION_COOLDOWN_MS,
+
+            confirmationTimeoutMs:
+                CONFIRMATION_TIMEOUT_MS,
 
             safety: {
                 developmentOnly:
@@ -1138,6 +1656,12 @@
                 approvedSubmitLabelRequired:
                     true,
 
+                exactConfirmationAriaLabelRequired:
+                    true,
+
+                confirmationAmountMustMatch:
+                    true,
+
                 automaticNavigation:
                     true,
 
@@ -1148,7 +1672,7 @@
                     true,
 
                 automaticConfirmation:
-                    false,
+                    true,
             },
 
             metrics: {
@@ -1164,6 +1688,12 @@
                     cloneValue(
                         metrics
                             .lastSubmissionResult
+                    ),
+
+                lastConfirmationResult:
+                    cloneValue(
+                        metrics
+                            .lastConfirmationResult
                     ),
 
                 lastError:
@@ -1198,7 +1728,7 @@
     start();
 
     logger?.warn(
-        "Protection development automatic deposits are enabled",
+        "Protection development automatic deposits and confirmations are enabled",
         {
             allowedDestinations: [
                 ...ALLOWED_DESTINATIONS,
@@ -1212,7 +1742,7 @@
                 true,
 
             automaticConfirmation:
-                false,
+                true,
         }
     );
 })();
