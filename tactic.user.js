@@ -174,7 +174,7 @@
 //
 // Wallet Protection application and developer automation.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=7
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/index.js?v=9
 //
 //
 // ============================================================

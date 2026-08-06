@@ -151,6 +151,13 @@
         protection,
     } = dependencies;
 
+    /*
+    * The Developer service is attached directly to
+    * TACTIC.services rather than registered as a dependency.
+    */
+    const developer =
+        TACTIC.services.developer;
+
     const settings =
         protection.settings;
 
@@ -1834,6 +1841,9 @@
 
                 protection:
                     Boolean(protection),
+
+                developer:
+                    Boolean(developer),
             },
 
             initialized:
