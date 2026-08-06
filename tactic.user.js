@@ -130,8 +130,8 @@
 //
 // Shared components must load before the drawer.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=2
 //
 //
 // ============================================================
@@ -212,7 +212,7 @@
 // MUST REMAIN THE FINAL @require.
 // ============================================================
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/app/bootstrap.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/app/bootstrap.js?v=4
 //
 // ==/UserScript==
 
