@@ -976,6 +976,73 @@
             id:
                 HELPER_ID,
 
+            name:
+                "Personal Vault",
+
+            description:
+                "Prepares deposits into the player's Personal Vault for manual submission.",
+
+            pageId:
+                "properties",
+
+            routeId:
+                "deposit:personal-vault",
+
+            capabilities: {
+                "page.ready":
+                    "isReady",
+
+                "page.wait-until-ready":
+                    "waitUntilReady",
+
+                "page.inspect":
+                    "inspect",
+
+                "amount.read":
+                    "getAmountInput",
+
+                "amount.set":
+                    "setAmount",
+
+                "amount.maximum":
+                    "getMaximumDeposit",
+
+                "submit.locate":
+                    "getSubmitButton",
+
+                "submit.highlight":
+                    "highlightSubmit",
+
+                "deposit.prepare":
+                    "prepareDeposit",
+
+                "deposit.submit":
+                    false,
+
+                "transaction.confirm":
+                    false,
+            },
+
+            metadata: {
+                category:
+                    "deposit",
+
+                destination:
+                    "personal-vault",
+
+                selectorsVerified:
+                    true,
+
+                manualSubmissionRequired:
+                    true,
+
+                automaticSubmission:
+                    false,
+
+                automaticConfirmation:
+                    false,
+            },
+
             isReady,
             waitUntilReady,
 
@@ -1006,6 +1073,24 @@
         {
             helperId:
                 HELPER_ID,
+
+            routeId:
+                "deposit:personal-vault",
+
+            capabilitySource:
+                "explicit",
+
+            capabilities: [
+                "page.ready",
+                "page.wait-until-ready",
+                "page.inspect",
+                "amount.read",
+                "amount.set",
+                "amount.maximum",
+                "submit.locate",
+                "submit.highlight",
+                "deposit.prepare",
+            ],
 
             submitsForm:
                 false,

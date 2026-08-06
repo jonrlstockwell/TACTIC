@@ -1011,16 +1011,75 @@
             id:
                 HELPER_ID,
 
+            name:
+                "Faction Bank",
+
+            description:
+                "Prepares a cash deposit into the Faction Bank for manual submission.",
+
+            pageId:
+                "faction",
+
+            routeId:
+                "deposit:faction-bank",
+
+            capabilities: {
+                "page.ready":
+                    "isReady",
+
+                "page.wait-until-ready":
+                    "waitUntilReady",
+
+                "page.inspect":
+                    "inspect",
+
+                "amount.read":
+                    "getAmountInput",
+
+                "amount.set":
+                    "setAmount",
+
+                "submit.locate":
+                    "getSubmitButton",
+
+                "submit.highlight":
+                    "highlightSubmit",
+
+                "deposit.prepare":
+                    "prepareDeposit",
+
+                "deposit.submit":
+                    false,
+
+                "transaction.confirm":
+                    false,
+            },
+
+            metadata: {
+                category:
+                    "deposit",
+
+                destination:
+                    "faction-bank",
+
+                selectorsVerified:
+                    true,
+
+                manualSubmissionRequired:
+                    true,
+
+                automaticSubmission:
+                    false,
+
+                automaticConfirmation:
+                    false,
+            },
+
             isReady,
             waitUntilReady,
 
-            getRoot,
-            getCashSection,
-            getForm,
-
             getAmountInput,
             getSubmitButton,
-            getPresetButtons,
 
             setAmount,
             highlightSubmit,
@@ -1045,17 +1104,33 @@
         }
     );
 
-    logger?.info(
+    logger.info(
         "Faction Bank DOM page helper loaded",
-        {
-            helperId:
-                HELPER_ID,
+    {
+        helperId: HELPER_ID,
 
-            submitsForm:
-                false,
+        routeId: "deposit:faction-bank",
 
-            confirmsTransaction:
-                false,
-        }
-    );
+        capabilitySource: "explicit",
+
+        capabilities: [
+            "page.ready",
+            "page.wait-until-ready",
+            "page.inspect",
+            "amount.read",
+            "amount.set",
+
+            // Include ONLY if your helper actually has it
+            "amount.maximum",
+
+            "submit.locate",
+            "submit.highlight",
+            "deposit.prepare",
+        ],
+
+        submitsForm: false,
+
+        confirmsTransaction: false,
+    }
+);
 })();
