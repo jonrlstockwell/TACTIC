@@ -15,24 +15,22 @@
 // CORE FRAMEWORK
 // ============================================================
 
-// Namespace must load first.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/namespace.js?v=1
-
-// Shared definitions.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/constants.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/config.js?v=1
 
-// Core infrastructure.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/logger.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/events.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/errors.js?v=1
+
+// Scheduler must load before Health.
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/scheduler/index.js?v=1
+
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/health.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/lifecycle.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/module-manager.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/storage.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/utilities.js?v=1
-
-// Developer state depends on Events.
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/core/developer.js?v=2
 
 // ============================================================
