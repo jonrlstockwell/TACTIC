@@ -9,29 +9,25 @@
  *
  * Purpose:
  * Automatically prepares, submits, and confirms Protection
- * deposits in the development build.
- *
- * Responsibilities:
- * - Watch Protection evaluations
- * - Prepare eligible deposits
- * - Navigate through the normal Deposit service when required
- * - Verify the prepared page and submit control
- * - Click the verified Deposit button
- * - Verify the confirmation amount
- * - Click the exact affirmative confirmation control
- * - Prevent duplicate or concurrent submissions
- * - Refuse stale recommendations that exceed the live wallet
- * - Clear the prepared amount after a confirmed deposit
+ * deposits for the authorized developer account when the
+ * protection.autoDeposit developer feature is enabled.
  *
  * Safety:
  * - Development build only
- * - Protection must be enabled
- * - Destination must be explicitly allowlisted
+ * - Authorized developer account only
+ * - Developer Mode must be enabled
+ * - Auto Deposit feature must be enabled
+ * - Wallet Protection must be enabled
+ * - Destination must be allowlisted
+ * - Live wallet must cover the deposit
  * - Deposit preparation must succeed first
- * - Submit control must be enabled and have an approved label
- * - Confirmation amount must exactly match the requested amount
+ * - Submit label must be approved
+ * - Confirmation amount must exactly match
  * - Confirmation control must use the verified aria-label
- * - Live wallet must cover the complete deposit amount
+ *
+ * Public API:
+ * - TACTIC.protection.devAutoDeposit
+ * - TACTIC.protection.devAutoPrepare
  *
  * ============================================================
  */
@@ -111,6 +107,29 @@
         notifications,
     } = dependencies;
 
+    const developer =
+        TACTIC.services.developer;
+
+    const events =
+        TACTIC.services.events;
+
+    const AUTO_DEPOSIT_FEATURE_ID =
+        "protection.autoDeposit";
+
+    if (
+        !developer ||
+        typeof developer.isDeveloper !==
+            "function" ||
+        typeof developer.canUse !==
+            "function"
+    ) {
+        console.error(
+            "[TACTIC Protection Dev Auto Deposit] Developer service is unavailable."
+        );
+
+        return;
+    }
+
     if (
         !TACTIC.protection ||
         typeof TACTIC.protection.inspect !==
@@ -177,6 +196,9 @@
 
     let lastSubmissionAt =
         0;
+
+    const removeDeveloperListeners =
+        [];
 
     const metrics = {
         loadedAt:
@@ -254,6 +276,12 @@
         validationSkips:
             0,
 
+        permissionSkips:
+            0,
+
+        activationChanges:
+            0,
+
         lastCheckedAt:
             null,
 
@@ -293,6 +321,9 @@
         lastClearResult:
             null,
 
+        lastActivationReason:
+            null,
+
         lastError:
             null,
     };
@@ -328,20 +359,27 @@
             return value;
         }
 
-        try {
-            return structuredClone(
-                value
-            );
-        } catch {
+        if (
+            typeof structuredClone ===
+            "function"
+        ) {
             try {
-                return JSON.parse(
-                    JSON.stringify(
-                        value
-                    )
+                return structuredClone(
+                    value
                 );
             } catch {
-                return value;
+                // Fall through.
             }
+        }
+
+        try {
+            return JSON.parse(
+                JSON.stringify(
+                    value
+                )
+            );
+        } catch {
+            return value;
         }
     }
 
@@ -473,7 +511,8 @@
                 "hidden" ||
             Number(
                 style.opacity
-            ) === 0
+            ) ===
+                0
         ) {
             return false;
         }
@@ -484,6 +523,17 @@
         return (
             rectangle.width > 0 &&
             rectangle.height > 0
+        );
+    }
+
+    function canRunAutoDeposit() {
+        return (
+            developer.isDeveloper() ===
+                true &&
+            developer.canUse(
+                AUTO_DEPOSIT_FEATURE_ID
+            ) ===
+                true
         );
     }
 
@@ -518,7 +568,7 @@
     ) {
         if (
             control instanceof
-                HTMLInputElement
+            HTMLInputElement
         ) {
             return normalizeLabel(
                 control.value
@@ -654,7 +704,8 @@
 
         for (
             let depth = 0;
-            depth < 10 && current;
+            depth < 10 &&
+            current;
             depth += 1
         ) {
             const text =
@@ -872,6 +923,26 @@
                 startedAt <
             timeoutMs
         ) {
+            if (!canRunAutoDeposit()) {
+                metrics.permissionSkips +=
+                    1;
+
+                return {
+                    success:
+                        false,
+
+                    confirmed:
+                        false,
+
+                    destination,
+
+                    amount,
+
+                    reason:
+                        "developer-auto-deposit-disabled",
+                };
+            }
+
             const control =
                 document.querySelector(
                     CONFIRMATION_SELECTOR
@@ -929,6 +1000,26 @@
                                 verification.dialogText ||
                                 null,
                         },
+                    };
+                }
+
+                if (!canRunAutoDeposit()) {
+                    metrics.permissionSkips +=
+                        1;
+
+                    return {
+                        success:
+                            false,
+
+                        confirmed:
+                            false,
+
+                        destination,
+
+                        amount,
+
+                        reason:
+                            "developer-auto-deposit-disabled",
                     };
                 }
 
@@ -1005,6 +1096,9 @@
 
                     reason:
                         "deposit-confirmation-clicked",
+
+                    clicked:
+                        true,
 
                     clickedAt:
                         metrics.lastConfirmedAt,
@@ -1196,6 +1290,25 @@
         destination,
         amount,
     }) {
+        if (!canRunAutoDeposit()) {
+            metrics.permissionSkips +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                submitted:
+                    false,
+
+                confirmed:
+                    false,
+
+                reason:
+                    "developer-auto-deposit-disabled",
+            };
+        }
+
         const page =
             pageApi.current({
                 capability:
@@ -1248,7 +1361,7 @@
 
         if (
             page.submit
-                .locateSupported !==
+                ?.locateSupported !==
             true
         ) {
             return {
@@ -1308,6 +1421,25 @@
             };
         }
 
+        if (!canRunAutoDeposit()) {
+            metrics.permissionSkips +=
+                1;
+
+            return {
+                success:
+                    false,
+
+                submitted:
+                    false,
+
+                confirmed:
+                    false,
+
+                reason:
+                    "developer-auto-deposit-disabled",
+            };
+        }
+
         const verifiedControl =
             verification.control;
 
@@ -1316,10 +1448,6 @@
 
         verifiedControl.focus();
 
-        /*
-         * Trigger the verified deposit button.
-         * Torn should then display its confirmation dialog.
-         */
         HTMLElement.prototype.click.call(
             verifiedControl
         );
@@ -1381,7 +1509,7 @@
                     confirmationClicked:
                         confirmationResult
                             ?.clicked ===
-                            true,
+                        true,
                 },
             };
         }
@@ -1451,6 +1579,27 @@
 
         if (!active) {
             return null;
+        }
+
+        if (!canRunAutoDeposit()) {
+            metrics.permissionSkips +=
+                1;
+
+            stop();
+
+            return {
+                success:
+                    false,
+
+                submitted:
+                    false,
+
+                confirmed:
+                    false,
+
+                reason:
+                    "developer-auto-deposit-disabled",
+            };
         }
 
         if (running) {
@@ -1584,7 +1733,7 @@
                 lastAttemptKey &&
             Date.now() -
                 lastAttemptAt <
-                DUPLICATE_COOLDOWN_MS
+            DUPLICATE_COOLDOWN_MS
         ) {
             metrics.duplicateSkips +=
                 1;
@@ -1614,6 +1763,25 @@
             1;
 
         try {
+            if (!canRunAutoDeposit()) {
+                metrics.permissionSkips +=
+                    1;
+
+                return {
+                    success:
+                        false,
+
+                    submitted:
+                        false,
+
+                    confirmed:
+                        false,
+
+                    reason:
+                        "developer-auto-deposit-disabled",
+                };
+            }
+
             const executionResult =
                 await actions.execute(
                     "deposit.prepare",
@@ -1652,7 +1820,7 @@
                     1;
 
                 /*
-                 * Permit the next check on the destination page
+                 * Allow the next check on the destination page
                  * to complete submission after navigation.
                  */
                 lastAttemptKey =
@@ -1683,6 +1851,25 @@
 
             metrics.lastPreparedAt =
                 Date.now();
+
+            if (!canRunAutoDeposit()) {
+                metrics.permissionSkips +=
+                    1;
+
+                return {
+                    success:
+                        false,
+
+                    submitted:
+                        false,
+
+                    confirmed:
+                        false,
+
+                    reason:
+                        "developer-auto-deposit-disabled-after-prepare",
+                };
+            }
 
             const submissionResult =
                 await submitPreparedDeposit({
@@ -1764,6 +1951,13 @@
     }
 
     function start() {
+        if (!canRunAutoDeposit()) {
+            active =
+                false;
+
+            return false;
+        }
+
         if (timerId !== null) {
             active =
                 true;
@@ -1776,6 +1970,9 @@
 
         metrics.startedAt =
             Date.now();
+
+        metrics.stoppedAt =
+            null;
 
         timerId =
             globalThis.setInterval(
@@ -1800,7 +1997,12 @@
             );
 
         check().catch(
-            () => {}
+            error => {
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+            }
         );
 
         return true;
@@ -1827,6 +2029,65 @@
         return true;
     }
 
+    function synchronizeActivation(
+        reason =
+            "manual"
+    ) {
+        metrics.activationChanges +=
+            1;
+
+        metrics.lastActivationReason =
+            reason;
+
+        if (canRunAutoDeposit()) {
+            const started =
+                start();
+
+            logger?.info?.(
+                "Developer Auto Deposit enabled",
+                {
+                    reason,
+                    started,
+                    active,
+                }
+            );
+
+            return {
+                enabled:
+                    true,
+
+                active,
+
+                started,
+
+                reason,
+            };
+        }
+
+        const stopped =
+            stop();
+
+        logger?.info?.(
+            "Developer Auto Deposit disabled",
+            {
+                reason,
+                stopped,
+                active,
+            }
+        );
+
+        return {
+            enabled:
+                false,
+
+            active,
+
+            stopped,
+
+            reason,
+        };
+    }
+
     function resetDuplicateProtection() {
         lastAttemptKey =
             null;
@@ -1847,6 +2108,35 @@
 
             developmentBuild:
                 true,
+
+            developer: {
+                developerUserId:
+                    developer.developerUserId,
+
+                currentUserId:
+                    developer.getIdentity?.()
+                        ?.currentUserId ??
+                    null,
+
+                verified:
+                    developer.isDeveloper(),
+
+                masterEnabled:
+                    developer.isEnabled?.() ??
+                    false,
+
+                featureId:
+                    AUTO_DEPOSIT_FEATURE_ID,
+
+                featureState:
+                    developer.getFeatureState?.(
+                        AUTO_DEPOSIT_FEATURE_ID
+                    ) ||
+                    null,
+
+                usable:
+                    canRunAutoDeposit(),
+            },
 
             active,
 
@@ -1877,6 +2167,15 @@
 
             safety: {
                 developmentOnly:
+                    true,
+
+                developerIdentityRequired:
+                    true,
+
+                developerMasterModeRequired:
+                    true,
+
+                developerFeatureRequired:
                     true,
 
                 protectionRequired:
@@ -1957,6 +2256,7 @@
             stop,
             check,
             inspect,
+            synchronizeActivation,
             resetDuplicateProtection,
         });
 
@@ -1964,16 +2264,80 @@
         api;
 
     /*
-     * Temporary compatibility alias for earlier developer builds.
+     * Compatibility alias retained for earlier developer builds.
      */
     TACTIC.protection.devAutoPrepare =
         api;
 
-    start();
+    if (
+        events &&
+        typeof events.on ===
+            "function"
+    ) {
+        removeDeveloperListeners.push(
+            events.on(
+                "developer:feature-changed",
+                ({
+                    featureId,
+                }) => {
+                    if (
+                        featureId !==
+                        AUTO_DEPOSIT_FEATURE_ID
+                    ) {
+                        return;
+                    }
+
+                    synchronizeActivation(
+                        "feature-changed"
+                    );
+                }
+            )
+        );
+
+        removeDeveloperListeners.push(
+            events.on(
+                "developer:changed",
+                () => {
+                    synchronizeActivation(
+                        "developer-master-changed"
+                    );
+                }
+            )
+        );
+
+        removeDeveloperListeners.push(
+            events.on(
+                "developer:identity-changed",
+                () => {
+                    synchronizeActivation(
+                        "developer-identity-changed"
+                    );
+                }
+            )
+        );
+    }
+
+    synchronizeActivation(
+        "module-load"
+    );
 
     logger?.warn(
-        "Protection development automatic deposits and confirmations are enabled",
+        "Protection development automatic deposit module loaded",
         {
+            developerUserId:
+                developer.developerUserId,
+
+            currentUserId:
+                developer.getIdentity?.()
+                    ?.currentUserId ??
+                null,
+
+            featureId:
+                AUTO_DEPOSIT_FEATURE_ID,
+
+            enabled:
+                canRunAutoDeposit(),
+
             allowedDestinations: [
                 ...ALLOWED_DESTINATIONS,
             ],

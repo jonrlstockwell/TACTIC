@@ -178,6 +178,14 @@
 //
 //
 // ============================================================
+// PROTECTION DEVELOPER AUTOMATION
+// Development build only.
+// ============================================================
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/protection/dev-auto-prepare.js?v=9
+//
+//
+// ============================================================
 // DEVELOPER DASHBOARD
 // Developer build only.
 // ============================================================
