@@ -112,7 +112,7 @@
         "finance:active-tab";
 
     const MODULE_VERSION =
-        "1.2.0";
+        "1.3.0";
 
     const MODULE_ORDER =
         200;
@@ -1356,6 +1356,16 @@
                     ?.getInvestmentBank?.() ||
                 null;
 
+            const fundingSources =
+                financeRepository
+                    ?.getFundingSources?.() ||
+                [];
+
+            const liquidity =
+                financeRepository
+                    ?.getLiquiditySnapshot?.() ||
+                null;
+
             const protection =
                 TACTIC.protection
                     ?.inspect?.() ||
@@ -1365,6 +1375,8 @@
                 wallet,
                 protection,
                 investmentBank,
+                fundingSources,
+                liquidity,
             });
         } catch (error) {
             metrics.advisorEvaluationFailures +=
