@@ -148,8 +148,14 @@
     const FACTION_VAULT_HELPER_ID =
         "faction-bank";
 
+    const PERSONAL_VAULT_HELPER_ID =
+        "personal-vault";
+
     const FACTION_VAULT_ROOT_SELECTOR =
         "#tab\\=armoury\\&sub\\=donate";
+
+    const PERSONAL_VAULT_ROOT_SELECTOR =
+        ".properties-wrap";
 
     const BANK_CACHE_STORAGE_KEY =
         "finance:investment-bank-cache";
@@ -176,6 +182,19 @@
         60 *
         1_000;
 
+    const PERSONAL_VAULT_CACHE_STORAGE_KEY =
+        "finance:personal-vault-cache";
+
+    const PERSONAL_VAULT_CACHE_VERSION =
+        1;
+
+    const PERSONAL_VAULT_CACHE_MAX_AGE_MS =
+        7 *
+        24 *
+        60 *
+        60 *
+        1_000;
+
     const WALLET_SELECTOR_PATH =
         "USER.WALLET";
 
@@ -190,6 +209,9 @@
     const FACTION_VAULT_REFRESH_DEBOUNCE_MS =
         350;
 
+    const PERSONAL_VAULT_REFRESH_DEBOUNCE_MS =
+        350;
+
     const DATA_KEYS =
         Object.freeze({
             WALLET:
@@ -200,6 +222,9 @@
 
             FACTION_VAULT:
                 "factionVault",
+
+            PERSONAL_VAULT:
+                "personalVault",
         });
 
     const STATE_KEYS =
@@ -212,6 +237,9 @@
 
             FACTION_VAULT:
                 "finance.factionVault",
+
+            PERSONAL_VAULT:
+                "finance.personalVault",
         });
 
     const EVENT_NAMES =
@@ -224,6 +252,9 @@
 
             FACTION_VAULT_CHANGED:
                 "finance:faction-vault-changed",
+
+            PERSONAL_VAULT_CHANGED:
+                "finance:personal-vault-changed",
 
             INVESTMENT_STRATEGY_CHANGED:
                 "finance:investment-strategy-changed",
@@ -241,6 +272,10 @@
             ],
             [
                 DATA_KEYS.FACTION_VAULT,
+                new Set(),
+            ],
+            [
+                DATA_KEYS.PERSONAL_VAULT,
                 new Set(),
             ],
         ]);
@@ -262,6 +297,9 @@
             null,
 
         factionVault:
+            null,
+
+        personalVault:
             null,
 
         investmentStrategy:
@@ -362,6 +400,39 @@
         factionVaultCacheReadFailures:
             0,
 
+        personalVaultReads:
+            0,
+
+        personalVaultRefreshes:
+            0,
+
+        personalVaultChanges:
+            0,
+
+        personalVaultNoChanges:
+            0,
+
+        personalVaultUnavailableReads:
+            0,
+
+        personalVaultCacheReads:
+            0,
+
+        personalVaultCacheHits:
+            0,
+
+        personalVaultCacheMisses:
+            0,
+
+        personalVaultCacheWrites:
+            0,
+
+        personalVaultCacheWriteFailures:
+            0,
+
+        personalVaultCacheReadFailures:
+            0,
+
         fundingSourceSnapshots:
             0,
 
@@ -419,6 +490,18 @@
         lastFactionVaultCacheWriteAt:
             null,
 
+        lastPersonalVaultReadAt:
+            null,
+
+        lastPersonalVaultChangeAt:
+            null,
+
+        lastPersonalVaultCacheReadAt:
+            null,
+
+        lastPersonalVaultCacheWriteAt:
+            null,
+
         lastFundingSourceSnapshotAt:
             null,
 
@@ -448,6 +531,12 @@
         null;
 
     let factionVaultRefreshTimerId =
+        null;
+
+    let personalVaultMutationObserver =
+        null;
+
+    let personalVaultRefreshTimerId =
         null;
 
     function cloneValue(
@@ -1064,6 +1153,595 @@
                     FACTION_VAULT_HELPER_ID
                 ) ||
             null
+        );
+    }
+
+    function getPersonalVaultHelper() {
+        return (
+            dom.pages
+                ?.getHelper?.(
+                    PERSONAL_VAULT_HELPER_ID
+                ) ||
+            null
+        );
+    }
+
+    function createPersonalVaultCacheRecord(
+        snapshot
+    ) {
+        return {
+            version:
+                PERSONAL_VAULT_CACHE_VERSION,
+
+            savedAt:
+                Date.now(),
+
+            lastLiveReadAt:
+                snapshot
+                    ?.lastLiveReadAt ||
+                snapshot
+                    ?.updatedAt ||
+                Date.now(),
+
+            snapshot:
+                cloneValue(
+                    snapshot
+                ),
+        };
+    }
+
+    function savePersonalVaultCache(
+        snapshot
+    ) {
+        if (
+            !storage ||
+            typeof storage.set !==
+                "function" ||
+            !snapshot ||
+            snapshot.live !==
+                true ||
+            snapshot.verified !==
+                true
+        ) {
+            return false;
+        }
+
+        try {
+            storage.set(
+                PERSONAL_VAULT_CACHE_STORAGE_KEY,
+                createPersonalVaultCacheRecord(
+                    snapshot
+                )
+            );
+
+            metrics.personalVaultCacheWrites +=
+                1;
+
+            metrics.lastPersonalVaultCacheWriteAt =
+                Date.now();
+
+            return true;
+        } catch (error) {
+            metrics
+                .personalVaultCacheWriteFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not save the Personal Vault cache",
+                {
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
+    function readPersonalVaultCacheRecord() {
+        metrics.personalVaultCacheReads +=
+            1;
+
+        metrics.lastPersonalVaultCacheReadAt =
+            Date.now();
+
+        if (
+            !storage ||
+            typeof storage.get !==
+                "function"
+        ) {
+            metrics.personalVaultCacheMisses +=
+                1;
+
+            return null;
+        }
+
+        try {
+            const record =
+                storage.get(
+                    PERSONAL_VAULT_CACHE_STORAGE_KEY,
+                    null
+                );
+
+            if (
+                !record ||
+                typeof record !==
+                    "object" ||
+                record.version !==
+                    PERSONAL_VAULT_CACHE_VERSION ||
+                !record.snapshot
+            ) {
+                metrics.personalVaultCacheMisses +=
+                    1;
+
+                return null;
+            }
+
+            metrics.personalVaultCacheHits +=
+                1;
+
+            return cloneValue(
+                record
+            );
+        } catch (error) {
+            metrics
+                .personalVaultCacheReadFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Personal Vault cache",
+                {
+                    error,
+                }
+            );
+
+            return null;
+        }
+    }
+
+    function createCachedPersonalVaultSnapshot(
+        record,
+        reason
+    ) {
+        if (
+            !record ||
+            !record.snapshot
+        ) {
+            return null;
+        }
+
+        const cached =
+            cloneValue(
+                record.snapshot
+            );
+
+        const now =
+            Date.now();
+
+        const lastLiveReadAt =
+            record.lastLiveReadAt ||
+            cached.lastLiveReadAt ||
+            cached.updatedAt ||
+            record.savedAt ||
+            null;
+
+        const cacheAgeMs =
+            Number.isFinite(
+                lastLiveReadAt
+            )
+                ? Math.max(
+                    0,
+                    now -
+                        lastLiveReadAt
+                )
+                : null;
+
+        cached.available =
+            Number.isFinite(
+                cached.value
+            );
+
+        cached.verified =
+            cached.available;
+
+        cached.ready =
+            false;
+
+        cached.live =
+            false;
+
+        cached.cached =
+            true;
+
+        cached.stale =
+            Number.isFinite(
+                cacheAgeMs
+            )
+                ? cacheAgeMs >
+                PERSONAL_VAULT_CACHE_MAX_AGE_MS
+                : true;
+
+        cached.reason =
+            reason;
+
+        cached.source =
+            "repository:finance-persistent-cache";
+
+        cached.cachedAt =
+            record.savedAt ||
+            now;
+
+        cached.lastLiveReadAt =
+            lastLiveReadAt;
+
+        cached.cacheAgeMs =
+            cacheAgeMs;
+
+        cached.updatedAt =
+            now;
+
+        return cached;
+    }
+
+    function loadPersonalVaultCache(
+        reason =
+            "persistent-cache"
+    ) {
+        const record =
+            readPersonalVaultCacheRecord();
+
+        if (!record) {
+            return null;
+        }
+
+        return createCachedPersonalVaultSnapshot(
+            record,
+            reason
+        );
+    }
+
+    function createUnavailablePersonalVaultSnapshot(
+        reason
+    ) {
+        const previous =
+            repositoryState
+                .personalVault;
+
+        if (
+            previous &&
+            Number.isFinite(
+                previous.value
+            )
+        ) {
+            const cached =
+                createCachedPersonalVaultSnapshot(
+                    {
+                        version:
+                            PERSONAL_VAULT_CACHE_VERSION,
+
+                        savedAt:
+                            previous.cachedAt ||
+                            previous.updatedAt ||
+                            Date.now(),
+
+                        lastLiveReadAt:
+                            previous.lastLiveReadAt ||
+                            previous.updatedAt ||
+                            null,
+
+                        snapshot:
+                            previous,
+                    },
+                    reason
+                );
+
+            if (cached) {
+                return cached;
+            }
+        }
+
+        const persisted =
+            loadPersonalVaultCache(
+                reason
+            );
+
+        if (persisted) {
+            return persisted;
+        }
+
+        return {
+            type:
+                DATA_KEYS
+                    .PERSONAL_VAULT,
+
+            id:
+                "personal-vault",
+
+            name:
+                "Personal Vault",
+
+            ownership:
+                "personal",
+
+            value:
+                null,
+
+            available:
+                false,
+
+            verified:
+                false,
+
+            ready:
+                false,
+
+            live:
+                false,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                false,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "self-accessible",
+
+            access: {
+                canDeposit:
+                    false,
+
+                canSelfWithdraw:
+                    true,
+
+                requiresThirdParty:
+                    false,
+
+                requiresTravel:
+                    false,
+
+                timing:
+                    "immediate-on-access",
+            },
+
+            accessCost: {
+                timeMinutes:
+                    0,
+
+                timeKnown:
+                    true,
+
+                risk:
+                    "low",
+
+                dependencies: [],
+            },
+
+            funding: {
+                usableForRecommendations:
+                    false,
+
+                affordabilityClass:
+                    "unavailable",
+
+                transferRequired:
+                    false,
+
+                selfWithdrawalRequired:
+                    true,
+            },
+
+            reason,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function createPersonalVaultSnapshot(
+        helperSnapshot,
+        reason
+    ) {
+        const balanceValue =
+            helperSnapshot
+                ?.balance
+                ?.value;
+
+        const available =
+            Number.isFinite(
+                balanceValue
+            ) &&
+            helperSnapshot
+                ?.balance
+                ?.available ===
+            true;
+
+        return {
+            type:
+                DATA_KEYS
+                    .PERSONAL_VAULT,
+
+            id:
+                "personal-vault",
+
+            name:
+                "Personal Vault",
+
+            ownership:
+                helperSnapshot
+                    ?.ownership ||
+                "personal",
+
+            value:
+                available
+                    ? balanceValue
+                    : null,
+
+            raw:
+                helperSnapshot
+                    ?.balance
+                    ?.raw ||
+                "",
+
+            available,
+
+            verified:
+                available &&
+                helperSnapshot
+                    ?.balance
+                    ?.verified ===
+                true,
+
+            ready:
+                available,
+
+            live:
+                available,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                helperSnapshot
+                    ?.spendable ===
+                true,
+
+            immediatelyAvailable:
+                helperSnapshot
+                    ?.immediatelyAvailable ===
+                true,
+
+            liquidityClass:
+                helperSnapshot
+                    ?.liquidityClass ||
+                "self-accessible",
+
+            access:
+                cloneValue(
+                    helperSnapshot
+                        ?.access ||
+                    {
+                        canDeposit:
+                            false,
+
+                        canSelfWithdraw:
+                            true,
+
+                        requiresThirdParty:
+                            false,
+
+                        requiresTravel:
+                            false,
+
+                        timing:
+                            "immediate-on-access",
+                    }
+                ),
+
+            accessCost:
+                cloneValue(
+                    helperSnapshot
+                        ?.accessCost ||
+                    {
+                        timeMinutes:
+                            0,
+
+                        timeKnown:
+                            true,
+
+                        risk:
+                            "low",
+
+                        dependencies: [],
+                    }
+                ),
+
+            funding:
+                cloneValue(
+                    helperSnapshot
+                        ?.funding ||
+                    {
+                        usableForRecommendations:
+                            available,
+
+                        affordabilityClass:
+                            available
+                                ? "affordable-after-self-withdrawal"
+                                : "unavailable",
+
+                        transferRequired:
+                            false,
+
+                        selfWithdrawalRequired:
+                            true,
+                    }
+                ),
+
+            helperSnapshot:
+                cloneValue(
+                    helperSnapshot
+                ),
+
+            reason,
+
+            lastLiveReadAt:
+                available
+                    ? Date.now()
+                    : null,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function personalVaultSnapshotsEqual(
+        first,
+        second
+    ) {
+        if (
+            !first ||
+            !second
+        ) {
+            return false;
+        }
+
+        return (
+            first.value ===
+                second.value &&
+            first.available ===
+                second.available &&
+            first.verified ===
+                second.verified &&
+            first.live ===
+                second.live &&
+            first.cached ===
+                second.cached &&
+            first.stale ===
+                second.stale
         );
     }
 
@@ -2681,6 +3359,111 @@
         };
     }
 
+    function updatePersonalVaultState(
+        personalVault,
+        reason,
+        forceNotify =
+            false
+    ) {
+        const previousPersonalVault =
+            repositoryState
+                .personalVault;
+
+        const changed =
+            !personalVaultSnapshotsEqual(
+                previousPersonalVault,
+                personalVault
+            );
+
+        repositoryState.personalVault =
+            personalVault;
+
+        publishState(
+            STATE_KEYS.PERSONAL_VAULT,
+            personalVault,
+            reason,
+            forceNotify
+        );
+
+        if (
+            !changed &&
+            !forceNotify
+        ) {
+            metrics.personalVaultNoChanges +=
+                1;
+
+            return {
+                changed:
+                    false,
+
+                personalVault:
+                    cloneValue(
+                        personalVault
+                    ),
+            };
+        }
+
+        metrics.personalVaultChanges +=
+            1;
+
+        metrics.lastPersonalVaultChangeAt =
+            Date.now();
+
+        notifySubscribers(
+            DATA_KEYS.PERSONAL_VAULT,
+            personalVault,
+            previousPersonalVault,
+            reason
+        );
+
+        events?.emit?.(
+            EVENT_NAMES.PERSONAL_VAULT_CHANGED,
+            {
+                personalVault:
+                    cloneValue(
+                        personalVault
+                    ),
+
+                previousPersonalVault:
+                    cloneValue(
+                        previousPersonalVault
+                    ),
+
+                reason,
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        recordActivity(
+            "personal-vault-changed",
+            {
+                available:
+                    personalVault.available,
+
+                value:
+                    personalVault.value,
+
+                live:
+                    personalVault.live,
+
+                cached:
+                    personalVault.cached,
+            }
+        );
+
+        return {
+            changed:
+                true,
+
+            personalVault:
+                cloneValue(
+                    personalVault
+                ),
+        };
+    }
+
     function readWalletFromDom(
         source =
             "dom-read"
@@ -3015,6 +3798,88 @@
         }
     }
 
+    function readPersonalVault(
+        reason =
+            "manual-read"
+    ) {
+        metrics.personalVaultReads +=
+            1;
+
+        metrics.lastPersonalVaultReadAt =
+            Date.now();
+
+        const helper =
+            getPersonalVaultHelper();
+
+        if (
+            !helper ||
+            typeof helper.getFinancialSnapshot !==
+                "function"
+        ) {
+            metrics
+                .personalVaultUnavailableReads +=
+                1;
+
+            return createUnavailablePersonalVaultSnapshot(
+                "personal-vault-helper-unavailable"
+            );
+        }
+
+        try {
+            const helperSnapshot =
+                helper.getFinancialSnapshot();
+
+            if (
+                helperSnapshot
+                    ?.balance
+                    ?.available !==
+                true ||
+                !Number.isFinite(
+                    helperSnapshot
+                        ?.balance
+                        ?.value
+                )
+            ) {
+                metrics
+                    .personalVaultUnavailableReads +=
+                    1;
+
+                return createUnavailablePersonalVaultSnapshot(
+                    helperSnapshot
+                        ?.balance
+                        ?.reason ||
+                    "personal-vault-page-unavailable"
+                );
+            }
+
+            return createPersonalVaultSnapshot(
+                helperSnapshot,
+                reason
+            );
+        } catch (error) {
+            metrics
+                .personalVaultUnavailableReads +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Personal Vault",
+                {
+                    error,
+                    reason,
+                }
+            );
+
+            return createUnavailablePersonalVaultSnapshot(
+                "personal-vault-read-failed"
+            );
+        }
+    }
+
     function getFactionVault(
         options = {}
     ) {
@@ -3073,12 +3938,73 @@
         );
     }
 
+    function refreshPersonalVault(
+        reason =
+            "manual-refresh",
+        options = {}
+    ) {
+        metrics.personalVaultRefreshes +=
+            1;
+
+        const personalVault =
+            readPersonalVault(
+                reason
+            );
+
+        if (
+            personalVault?.live ===
+                true &&
+            personalVault?.verified ===
+                true
+        ) {
+            savePersonalVaultCache(
+                personalVault
+            );
+        }
+
+        updatePersonalVaultState(
+            personalVault,
+            reason,
+            options.forceNotify ===
+                true
+        );
+
+        return cloneValue(
+            personalVault
+        );
+    }
+
+    function getPersonalVault(
+        options = {}
+    ) {
+        if (
+            options.refresh ===
+                true ||
+            repositoryState
+                .personalVault ===
+            null
+        ) {
+            refreshPersonalVault(
+                options.reason ||
+                "get-personal-vault"
+            );
+        }
+
+        return cloneValue(
+            repositoryState
+                .personalVault
+        );
+    }
+
     function buildFinancialState() {
         const wallet =
             repositoryState.wallet;
 
         const factionVault =
             repositoryState.factionVault;
+
+        const personalVault =
+            repositoryState.personalVault;
 
         const investmentBank =
             repositoryState.investmentBank;
@@ -3120,6 +4046,77 @@
                     updatedAt:
                         wallet?.updatedAt ||
                         null,
+                },
+            },
+
+            personalVault: {
+                amount:
+                    Number.isFinite(
+                        personalVault?.value
+                    )
+                        ? personalVault.value
+                        : 0,
+
+                verified:
+                    personalVault
+                        ?.verified ===
+                    true,
+
+                estimated:
+                    false,
+
+                source:
+                    personalVault
+                        ?.source ||
+                    "finance-repository",
+
+                metadata: {
+                    available:
+                        personalVault
+                            ?.available ===
+                        true,
+
+                    live:
+                        personalVault
+                            ?.live ===
+                        true,
+
+                    cached:
+                        personalVault
+                            ?.cached ===
+                        true,
+
+                    stale:
+                        personalVault
+                            ?.stale ===
+                        true,
+
+                    lastLiveReadAt:
+                        personalVault
+                            ?.lastLiveReadAt ||
+                        null,
+
+                    cacheAgeMs:
+                        personalVault
+                            ?.cacheAgeMs ??
+                        null,
+
+                    canSelfWithdraw:
+                        personalVault
+                            ?.access
+                            ?.canSelfWithdraw ===
+                        true,
+
+                    requiresThirdParty:
+                        personalVault
+                            ?.access
+                            ?.requiresThirdParty ===
+                        true,
+
+                    liquidityClass:
+                        personalVault
+                            ?.liquidityClass ||
+                        "self-accessible",
                 },
             },
 
@@ -3415,6 +4412,35 @@
                     );
                 },
                 FACTION_VAULT_REFRESH_DEBOUNCE_MS
+            );
+
+        return true;
+    }
+
+    function schedulePersonalVaultRefresh(
+        reason =
+            "personal-vault-dom-change"
+    ) {
+        if (
+            personalVaultRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                personalVaultRefreshTimerId
+            );
+        }
+
+        personalVaultRefreshTimerId =
+            globalThis.setTimeout(
+                () => {
+                    personalVaultRefreshTimerId =
+                        null;
+
+                    refreshPersonalVault(
+                        reason
+                    );
+                },
+                PERSONAL_VAULT_REFRESH_DEBOUNCE_MS
             );
 
         return true;
@@ -3916,6 +4942,63 @@
         return true;
     }
 
+    function startPersonalVaultWatcher() {
+        if (
+            personalVaultMutationObserver
+        ) {
+            personalVaultMutationObserver
+                .disconnect();
+
+            personalVaultMutationObserver =
+                null;
+        }
+
+        const helper =
+            getPersonalVaultHelper();
+
+        const balanceElement =
+            helper
+                ?.getBalanceElement?.() ||
+            null;
+
+        if (!balanceElement) {
+            refreshPersonalVault(
+                "personal-vault-watcher-element-unavailable"
+            );
+
+            return false;
+        }
+
+        personalVaultMutationObserver =
+            new MutationObserver(
+                () => {
+                    schedulePersonalVaultRefresh(
+                        "personal-vault-dom-mutation"
+                    );
+                }
+            );
+
+        personalVaultMutationObserver.observe(
+            balanceElement,
+            {
+                childList:
+                    true,
+
+                subtree:
+                    true,
+
+                characterData:
+                    true,
+            }
+        );
+
+        refreshPersonalVault(
+            "personal-vault-watcher-initial"
+        );
+
+        return true;
+    }
+
     async function start() {
         if (
             repositoryState.started
@@ -3994,6 +5077,35 @@
             }
         }
 
+        /*
+        * Restore the most recently verified Personal Vault
+        * snapshot before attempting a live property-page read.
+        */
+        if (
+            repositoryState
+                .personalVault ===
+            null
+        ) {
+            const cachedPersonalVault =
+                loadPersonalVaultCache(
+                    "repository-startup-cache"
+                );
+
+            if (cachedPersonalVault) {
+                repositoryState
+                    .personalVault =
+                    cachedPersonalVault;
+
+                publishState(
+                    STATE_KEYS
+                        .PERSONAL_VAULT,
+                    cachedPersonalVault,
+                    "repository-startup-cache",
+                    true
+                );
+            }
+        }
+
         const walletWatcherActive =
             await startWalletWatcher();
 
@@ -4002,6 +5114,9 @@
 
         const factionVaultWatcherActive =
             startFactionVaultWatcher();
+
+        const personalVaultWatcherActive =
+            startPersonalVaultWatcher();
 
         health?.markHealthy?.(
             REPOSITORY_NAME,
@@ -4015,6 +5130,8 @@
                     bankWatcherActive,
 
                     factionVaultWatcherActive,
+
+                    personalVaultWatcherActive,
                 },
             }
         );
@@ -4027,6 +5144,8 @@
                 bankWatcherActive,
 
                 factionVaultWatcherActive,
+
+                personalVaultWatcherActive,
             }
         );
 
@@ -4038,6 +5157,8 @@
                 bankWatcherActive,
 
                 factionVaultWatcherActive,
+
+                personalVaultWatcherActive,
             }
         );
 
@@ -4076,6 +5197,16 @@
         }
 
         if (
+            personalVaultMutationObserver
+        ) {
+            personalVaultMutationObserver
+                .disconnect();
+
+            personalVaultMutationObserver =
+                null;
+        }
+
+        if (
             bankRefreshTimerId !==
             null
         ) {
@@ -4096,6 +5227,18 @@
             );
 
             factionVaultRefreshTimerId =
+                null;
+        }
+
+        if (
+            personalVaultRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearTimeout(
+                personalVaultRefreshTimerId
+            );
+
+            personalVaultRefreshTimerId =
                 null;
         }
 
@@ -4149,6 +5292,13 @@
             )?.size ||
             0;
 
+        const personalVaultSubscribers =
+            subscribers.get(
+                DATA_KEYS
+                    .PERSONAL_VAULT
+            )?.size ||
+            0;
+
         return {
             repository:
                 "finance",
@@ -4191,6 +5341,12 @@
                 cloneValue(
                     repositoryState
                         .factionVault
+                ),
+            
+            personalVault:
+                cloneValue(
+                    repositoryState
+                        .personalVault
                 ),
 
             financialIntelligence: {
@@ -4299,6 +5455,53 @@
                     true,
             },
 
+            personalVaultCache: {
+                storageKey:
+                    PERSONAL_VAULT_CACHE_STORAGE_KEY,
+
+                version:
+                    PERSONAL_VAULT_CACHE_VERSION,
+
+                maxAgeMs:
+                    PERSONAL_VAULT_CACHE_MAX_AGE_MS,
+
+                snapshotCached:
+                    repositoryState
+                        .personalVault
+                        ?.cached ===
+                    true,
+
+                snapshotLive:
+                    repositoryState
+                        .personalVault
+                        ?.live ===
+                    true,
+
+                cachedAt:
+                    repositoryState
+                        .personalVault
+                        ?.cachedAt ||
+                    null,
+
+                lastLiveReadAt:
+                    repositoryState
+                        .personalVault
+                        ?.lastLiveReadAt ||
+                    null,
+
+                ageMs:
+                    repositoryState
+                        .personalVault
+                        ?.cacheAgeMs ??
+                    null,
+
+                stale:
+                    repositoryState
+                        .personalVault
+                        ?.stale ===
+                    true,
+            },
+
 
             investmentBankHelper: {
                 id:
@@ -4328,6 +5531,22 @@
                 balanceReadable:
                     getFactionVaultHelper()
                         ?.getPersonalBalance?.()
+                        ?.available ===
+                    true,
+            },
+
+            personalVaultHelper: {
+                id:
+                    PERSONAL_VAULT_HELPER_ID,
+
+                available:
+                    Boolean(
+                        getPersonalVaultHelper()
+                    ),
+
+                balanceReadable:
+                    getPersonalVaultHelper()
+                        ?.getBalance?.()
                         ?.available ===
                     true,
             },
@@ -4371,6 +5590,19 @@
                             document.querySelector(
                                 FACTION_VAULT_ROOT_SELECTOR
                             )
+                        ),
+                },
+
+                personalVault: {
+                    active:
+                        Boolean(
+                            personalVaultMutationObserver
+                        ),
+
+                    balancePresent:
+                        Boolean(
+                            getPersonalVaultHelper()
+                                ?.getBalanceElement?.()
                         ),
                 },
             },
@@ -4429,6 +5661,25 @@
                                     .FACTION_VAULT
                             ),
                 },
+
+                personalVault: {
+                    key:
+                        STATE_KEYS
+                            .PERSONAL_VAULT,
+
+                    published:
+                        sharedState.has(
+                            STATE_KEYS
+                                .PERSONAL_VAULT
+                        ),
+
+                    revision:
+                        sharedState
+                            .getRevision(
+                                STATE_KEYS
+                                    .PERSONAL_VAULT
+                            ),
+                },
             },
 
             subscribers: {
@@ -4441,10 +5692,14 @@
                 factionVault:
                     factionVaultSubscribers,
 
+                personalVault:
+                    personalVaultSubscribers,
+
                 total:
                     walletSubscribers +
                     bankSubscribers +
-                    factionVaultSubscribers,
+                    factionVaultSubscribers +
+                    personalVaultSubscribers
             },
 
             metrics: {
@@ -4483,6 +5738,9 @@
 
             getFactionVault,
             refreshFactionVault,
+
+            getPersonalVault,
+            refreshPersonalVault,
 
             getFundingSources,
             getLiquiditySnapshot,
@@ -4585,6 +5843,8 @@
                     .INVESTMENT_BANK,
                 DATA_KEYS
                     .FACTION_VAULT,
+                DATA_KEYS
+                    .PERSONAL_VAULT,
             ],
 
             defaultInvestmentStrategy:
