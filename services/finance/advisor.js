@@ -14,6 +14,8 @@
  * Responsibilities:
  * - Evaluate Wallet Protection recommendations
  * - Evaluate active Investment Bank status
+ * - Evaluate unified liquidity and funding sources
+ * - Identify request-dependent and locked financial resources
  * - Identify bank maturity and availability conditions
  * - Compare current bank recommendations
  * - Generate prioritized financial next actions
@@ -428,6 +430,24 @@
             investmentBank:
                 input.investmentBank ||
                 null,
+
+            fundingSources:
+                Array.isArray(
+                    input.fundingSources
+                )
+                    ? cloneValue(
+                          input.fundingSources
+                      )
+                    : [],
+
+            liquidity:
+                input.liquidity &&
+                typeof input.liquidity ===
+                    "object"
+                    ? cloneValue(
+                          input.liquidity
+                      )
+                    : null,
 
             preferences: {
                 ...(
@@ -1252,90 +1272,316 @@
         context,
         recommendations
     ) {
-        const wallet =
-            context.wallet;
-
-        const bank =
-            context.investmentBank;
-
-        const active =
-            bank
-                ?.activeInvestment;
+        const liquidity =
+            context.liquidity;
 
         if (
-            wallet?.available !==
-                true ||
-            active?.active !==
-                true
+            !liquidity ||
+            typeof liquidity !==
+                "object"
         ) {
             return;
         }
 
-        const walletValue =
-            wallet.value;
-
-        if (
-            !Number.isFinite(
-                walletValue
-            )
-        ) {
-            return;
-        }
-
-        const protection =
-            getProtectionConfiguration(
-                context.protection
-            );
-
-        const reserve =
+        const immediate =
             Number.isFinite(
-                protection?.reserve
+                liquidity.immediate
             )
-                ? protection.reserve
+                ? liquidity.immediate
                 : 0;
 
+        const conditional =
+            Number.isFinite(
+                liquidity.conditional
+            )
+                ? liquidity.conditional
+                : 0;
+
+        const accessible =
+            Number.isFinite(
+                liquidity.accessible
+            )
+                ? liquidity.accessible
+                : immediate +
+                  conditional;
+
+        const locked =
+            Number.isFinite(
+                liquidity.locked
+            )
+                ? liquidity.locked
+                : 0;
+
+        const totalKnown =
+            Number.isFinite(
+                liquidity.totalKnown
+            )
+                ? liquidity.totalKnown
+                : accessible +
+                  locked;
+
+        const fundingSources =
+            Array.isArray(
+                context.fundingSources
+            )
+                ? context.fundingSources
+                : [];
+
+        const factionVault =
+            fundingSources.find(
+                source =>
+                    source?.id ===
+                    "faction-vault"
+            ) ||
+            null;
+
+        const cayman =
+            fundingSources.find(
+                source =>
+                    source?.id ===
+                    "cayman"
+            ) ||
+            null;
+
+        const factionValue =
+            Number.isFinite(
+                factionVault?.amount
+            )
+                ? factionVault.amount
+                : 0;
+
+        const caymanValue =
+            Number.isFinite(
+                cayman?.amount
+            )
+                ? cayman.amount
+                : 0;
+
+        /*
+         * No meaningful financial state is available yet.
+         */
         if (
-            walletValue <=
-                reserve
+            totalKnown <=
+            0
+        ) {
+            return;
+        }
+
+        /*
+         * A meaningful amount of wealth exists, but none of it
+         * is currently accessible.
+         */
+        if (
+            accessible <=
+                0 &&
+            locked >
+                0
         ) {
             recommendations.push(
                 createRecommendation({
                     priority:
-                        walletValue ===
-                        0
-                            ? PRIORITIES.MEDIUM
-                            : PRIORITIES.LOW,
+                        PRIORITIES.MEDIUM,
 
                     category:
-                        CATEGORIES.LIQUIDITY,
+                        CATEGORIES
+                            .LIQUIDITY,
 
                     title:
-                        "Most funds are currently locked",
+                        "Funds are currently locked",
 
                     message:
-                        `Your active bank investment is locked, while your wallet holds ${formatMoney(
-                            walletValue
-                        )}.`,
+                        `${formatMoney(
+                            locked
+                        )} is currently locked, with no tracked spendable funds available outside those holdings.`,
 
                     reason:
-                        "The available wallet balance is at or below the configured wallet reserve while an investment remains active.",
+                        "TACTIC detected known financial assets, but none are currently classified as immediately or conditionally accessible.",
 
                     action:
                         createAction(
                             ACTION_TYPES
                                 .OPEN_FINANCE_TAB,
-                            "bank",
-                            "View Active Investment"
+                            "overview",
+                            "Review Finance Overview"
                         ),
 
                     metadata: {
-                        walletValue,
+                        immediate,
 
-                        configuredReserve:
-                            reserve,
+                        conditional,
 
-                        activeBankInvestment:
-                            true,
+                        accessible,
+
+                        locked,
+
+                        totalKnown,
+                    },
+                })
+            );
+
+            return;
+        }
+
+        /*
+         * Most tracked wealth is locked, but the player still has
+         * spendable funds through another source.
+         */
+        if (
+            locked >
+                accessible &&
+            accessible >
+                0
+        ) {
+            const accessibleDetails =
+                [];
+
+            if (
+                factionValue >
+                0
+            ) {
+                accessibleDetails.push(
+                    `${formatMoney(
+                        factionValue
+                    )} is available through your faction vault after a banker transfer`
+                );
+            }
+
+            if (
+                caymanValue >
+                0
+            ) {
+                accessibleDetails.push(
+                    `${formatMoney(
+                        caymanValue
+                    )} is available through Cayman`
+                );
+            }
+
+            if (
+                immediate >
+                0
+            ) {
+                accessibleDetails.push(
+                    `${formatMoney(
+                        immediate
+                    )} is immediately available`
+                );
+            }
+
+            const accessMessage =
+                accessibleDetails.length >
+                0
+                    ? accessibleDetails.join(
+                          ", while "
+                      )
+                    : `${formatMoney(
+                          accessible
+                      )} remains accessible outside the locked funds`;
+
+            recommendations.push(
+                createRecommendation({
+                    priority:
+                        immediate <=
+                            0 &&
+                        conditional >
+                            0
+                            ? PRIORITIES.MEDIUM
+                            : PRIORITIES.LOW,
+
+                    category:
+                        CATEGORIES
+                            .LIQUIDITY,
+
+                    title:
+                        "Most funds are currently locked",
+
+                    message:
+                        `${formatMoney(
+                            locked
+                        )} is currently locked. ${accessMessage}.`,
+
+                    reason:
+                        "Locked assets represent most of the tracked financial picture, but other spendable funding sources remain available.",
+
+                    action:
+                        createAction(
+                            ACTION_TYPES
+                                .OPEN_FINANCE_TAB,
+                            "overview",
+                            "Review Funding Sources"
+                        ),
+
+                    metadata: {
+                        immediate,
+
+                        conditional,
+
+                        accessible,
+
+                        locked,
+
+                        totalKnown,
+
+                        factionVault:
+                            factionValue,
+
+                        cayman:
+                            caymanValue,
+                    },
+                })
+            );
+
+            return;
+        }
+
+        /*
+         * Nothing is immediately available, but spendable money
+         * can be obtained through a transfer/travel dependency.
+         */
+        if (
+            immediate <=
+                0 &&
+            conditional >
+                0
+        ) {
+            recommendations.push(
+                createRecommendation({
+                    priority:
+                        PRIORITIES.LOW,
+
+                    category:
+                        CATEGORIES
+                            .LIQUIDITY,
+
+                    title:
+                        "Spendable funds require access first",
+
+                    message:
+                        `${formatMoney(
+                            conditional
+                        )} is spendable, but currently requires an additional access step before it can be used.`,
+
+                    reason:
+                        "TACTIC detected spendable conditional liquidity but no immediately available cash.",
+
+                    action:
+                        createAction(
+                            ACTION_TYPES
+                                .OPEN_FINANCE_TAB,
+                            "overview",
+                            "Review Funding Sources"
+                        ),
+
+                    metadata: {
+                        immediate,
+
+                        conditional,
+
+                        accessible,
+
+                        locked,
+
+                        totalKnown,
                     },
                 })
             );
@@ -1440,6 +1686,46 @@
                         ?.activeInvestment
                         ?.active ===
                     true,
+
+                fundingSourcesAvailable:
+                    context
+                        .fundingSources
+                        .length >
+                    0,
+
+                fundingSourceCount:
+                    context
+                        .fundingSources
+                        .length,
+
+                liquidityAvailable:
+                    Boolean(
+                        context.liquidity
+                    ),
+
+                immediateLiquidity:
+                    context
+                        .liquidity
+                        ?.immediate ??
+                    null,
+
+                conditionalLiquidity:
+                    context
+                        .liquidity
+                        ?.conditional ??
+                    null,
+
+                lockedLiquidity:
+                    context
+                        .liquidity
+                        ?.locked ??
+                    null,
+
+                totalKnown:
+                    context
+                        .liquidity
+                        ?.totalKnown ??
+                    null,
             },
 
             evaluatedAt:
@@ -1702,6 +1988,23 @@
 
             defaults: {
                 ...DEFAULTS,
+            },
+
+            liquiditySupport: {
+                fundingSources:
+                    true,
+
+                unifiedLiquidity:
+                    true,
+
+                requestDependentFunds:
+                    true,
+
+                lockedFunds:
+                    true,
+
+                travelDependentFunds:
+                    true,
             },
 
             lastEvaluation:
