@@ -40,6 +40,9 @@
  * - refreshInvestmentBank()
  * - getFactionVault()
  * - refreshFactionVault()
+ * - getFundingSources()
+ * - getLiquiditySnapshot()
+ * - evaluateAffordability()
  * - setInvestmentStrategy()
  * - getInvestmentStrategy()
  * - subscribe()
@@ -359,6 +362,15 @@
         factionVaultCacheReadFailures:
             0,
 
+        fundingSourceSnapshots:
+            0,
+
+        liquiditySnapshots:
+            0,
+
+        affordabilityEvaluations:
+            0,
+
         strategyChanges:
             0,
 
@@ -405,6 +417,15 @@
             null,
 
         lastFactionVaultCacheWriteAt:
+            null,
+
+        lastFundingSourceSnapshotAt:
+            null,
+
+        lastLiquiditySnapshotAt:
+            null,
+
+        lastAffordabilityEvaluationAt:
             null,
 
         lastStrategyChangeAt:
@@ -3052,6 +3073,324 @@
         );
     }
 
+    function buildFinancialState() {
+        const wallet =
+            repositoryState.wallet;
+
+        const factionVault =
+            repositoryState.factionVault;
+
+        const investmentBank =
+            repositoryState.investmentBank;
+
+        const investmentPayout =
+            investmentBank
+                ?.activeInvestment
+                ?.payout;
+
+        return {
+            wallet: {
+                amount:
+                    Number.isFinite(
+                        wallet?.value
+                    )
+                        ? wallet.value
+                        : 0,
+
+                verified:
+                    wallet?.available ===
+                    true,
+
+                estimated:
+                    false,
+
+                source:
+                    wallet?.source ||
+                    "finance-repository",
+
+                metadata: {
+                    available:
+                        wallet?.available ===
+                        true,
+
+                    elementFound:
+                        wallet?.elementFound ===
+                        true,
+
+                    updatedAt:
+                        wallet?.updatedAt ||
+                        null,
+                },
+            },
+
+            factionVault: {
+                amount:
+                    Number.isFinite(
+                        factionVault
+                            ?.value
+                    )
+                        ? factionVault.value
+                        : 0,
+
+                verified:
+                    factionVault
+                        ?.verified ===
+                    true,
+
+                estimated:
+                    false,
+
+                source:
+                    factionVault
+                        ?.source ||
+                    "finance-repository",
+
+                metadata: {
+                    available:
+                        factionVault
+                            ?.available ===
+                        true,
+
+                    live:
+                        factionVault
+                            ?.live ===
+                        true,
+
+                    cached:
+                        factionVault
+                            ?.cached ===
+                        true,
+
+                    stale:
+                        factionVault
+                            ?.stale ===
+                        true,
+
+                    lastLiveReadAt:
+                        factionVault
+                            ?.lastLiveReadAt ||
+                        null,
+
+                    cacheAgeMs:
+                        factionVault
+                            ?.cacheAgeMs ??
+                        null,
+
+                    requiresFactionBanker:
+                        factionVault
+                            ?.access
+                            ?.requiresFactionBanker ===
+                        true,
+
+                    liquidityClass:
+                        factionVault
+                            ?.liquidityClass ||
+                        "request-dependent",
+                },
+            },
+
+            investmentBank: {
+                /*
+                 * Use Torn's verified payout as the tracked
+                 * locked value. The original principal is not
+                 * always known with certainty.
+                 */
+                amount:
+                    Number.isFinite(
+                        investmentPayout
+                            ?.value
+                    )
+                        ? investmentPayout
+                              .value
+                        : 0,
+
+                verified:
+                    investmentPayout
+                        ?.verified ===
+                    true,
+
+                estimated:
+                    false,
+
+                source:
+                    investmentBank
+                        ?.source ||
+                    "finance-repository",
+
+                maturesAt:
+                    investmentBank
+                        ?.activeInvestment
+                        ?.countdown
+                        ?.estimatedMaturesAt ??
+                    null,
+
+                metadata: {
+                    available:
+                        investmentBank
+                            ?.available ===
+                        true,
+
+                    live:
+                        investmentBank
+                            ?.live ===
+                        true,
+
+                    cached:
+                        investmentBank
+                            ?.cached ===
+                        true,
+
+                    active:
+                        investmentBank
+                            ?.activeInvestment
+                            ?.active ===
+                        true,
+
+                    fundsLocked:
+                        investmentBank
+                            ?.activeInvestment
+                            ?.investmentLocked ===
+                        true,
+
+                    payoutVerified:
+                        investmentPayout
+                            ?.verified ===
+                        true,
+
+                    selectedTerm:
+                        investmentBank
+                            ?.activeInvestment
+                            ?.selectedTerm
+                            ?.id ||
+                        null,
+
+                    lastLiveReadAt:
+                        investmentBank
+                            ?.lastLiveReadAt ||
+                        null,
+                },
+            },
+
+            /*
+             * Cayman is intentionally present but unknown until
+             * we build and verify its repository source.
+             */
+            cayman: {},
+        };
+    }
+
+    function getFundingSources() {
+        metrics.fundingSourceSnapshots +=
+            1;
+
+        metrics.lastFundingSourceSnapshotAt =
+            Date.now();
+
+        const financialState =
+            buildFinancialState();
+
+        const sources =
+            financeEngine
+                .getFundingSources(
+                    financialState
+                );
+
+        recordActivity(
+            "funding-sources-created",
+            {
+                sourceCount:
+                    sources.length,
+            }
+        );
+
+        return cloneValue(
+            sources
+        );
+    }
+
+    function getLiquiditySnapshot() {
+        metrics.liquiditySnapshots +=
+            1;
+
+        metrics.lastLiquiditySnapshotAt =
+            Date.now();
+
+        const financialState =
+            buildFinancialState();
+
+        const snapshot =
+            financeEngine
+                .getLiquiditySnapshot(
+                    financialState
+                );
+
+        recordActivity(
+            "liquidity-snapshot-created",
+            {
+                immediate:
+                    snapshot.immediate,
+
+                conditional:
+                    snapshot.conditional,
+
+                accessible:
+                    snapshot.accessible,
+
+                locked:
+                    snapshot.locked,
+
+                totalKnown:
+                    snapshot.totalKnown,
+            }
+        );
+
+        return cloneValue(
+            snapshot
+        );
+    }
+
+    function evaluateAffordability(
+        amount
+    ) {
+        metrics.affordabilityEvaluations +=
+            1;
+
+        metrics.lastAffordabilityEvaluationAt =
+            Date.now();
+
+        const financialState =
+            buildFinancialState();
+
+        const evaluation =
+            financeEngine
+                .evaluateAffordability(
+                    amount,
+                    financialState
+                );
+
+        recordActivity(
+            "affordability-evaluated",
+            {
+                required:
+                    evaluation.required,
+
+                affordable:
+                    evaluation.affordable,
+
+                status:
+                    evaluation.status,
+
+                requiresAction:
+                    evaluation
+                        .requiresAction,
+            }
+        );
+
+        return cloneValue(
+            evaluation
+        );
+    }
+
     function scheduleFactionVaultRefresh(
         reason =
             "faction-vault-dom-change"
@@ -3854,6 +4193,14 @@
                         .factionVault
                 ),
 
+            financialIntelligence: {
+                fundingSources:
+                    getFundingSources(),
+
+                liquidity:
+                    getLiquiditySnapshot(),
+            },
+
             investmentStrategy:
                 repositoryState
                     .investmentStrategy,
@@ -4136,6 +4483,10 @@
 
             getFactionVault,
             refreshFactionVault,
+
+            getFundingSources,
+            getLiquiditySnapshot,
+            evaluateAffordability,
 
             getInvestmentStrategy,
             setInvestmentStrategy,
