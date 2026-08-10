@@ -136,6 +136,15 @@
         compoundProjections:
             0,
 
+        fundingSourceSnapshots:
+            0,
+
+        liquiditySnapshots:
+            0,
+
+        affordabilityEvaluations:
+            0,
+
         validationFailures:
             0,
 
@@ -158,6 +167,15 @@
             null,
 
         lastCompoundProjectionAt:
+            null,
+
+        lastFundingSourceSnapshotAt:
+            null,
+
+        lastLiquiditySnapshotAt:
+            null,
+
+        lastAffordabilityEvaluationAt:
             null,
 
         lastError:
@@ -1891,6 +1909,676 @@
         return result;
     }
 
+function normalizeFundingSource({
+    id,
+    label,
+    amount,
+    availability,
+    source,
+    verified = false,
+    estimated = false,
+    requiresAction = false,
+    action = null,
+    metadata = {},
+}) {
+    const normalizedAmount =
+        requireFiniteNumber(
+            amount ?? 0,
+            `${label || id || "Funding source"} amount`,
+            {
+                minimum:
+                    0,
+            }
+        );
+
+    return {
+        id:
+            String(id || "")
+                .trim()
+                .toLowerCase(),
+
+        label:
+            String(
+                label ||
+                id ||
+                "Funding Source"
+            ).trim(),
+
+        amount:
+            roundMoney(
+                normalizedAmount
+            ),
+
+        availability:
+            String(
+                availability ||
+                "unavailable"
+            )
+                .trim()
+                .toLowerCase(),
+
+        source:
+            source ||
+            "provided",
+
+        verified:
+            verified ===
+            true,
+
+        estimated:
+            estimated ===
+            true,
+
+        requiresAction:
+            requiresAction ===
+            true,
+
+        action:
+            action
+                ? cloneValue(
+                      action
+                  )
+                : null,
+
+        metadata:
+            cloneValue(
+                metadata
+            ) || {},
+    };
+}
+
+function getFundingSources(
+    financialState = {}
+) {
+    metrics.fundingSourceSnapshots +=
+        1;
+
+    metrics.lastFundingSourceSnapshotAt =
+        Date.now();
+
+    const wallet =
+        financialState.wallet ||
+        {};
+
+    const factionVault =
+        financialState.factionVault ||
+        {};
+
+    const investmentBank =
+        financialState.investmentBank ||
+        {};
+
+    const cayman =
+        financialState.cayman ||
+        {};
+
+    const sources = [
+        normalizeFundingSource({
+            id:
+                "wallet",
+
+            label:
+                "Wallet",
+
+            amount:
+                wallet.amount ??
+                wallet.balance ??
+                0,
+
+            availability:
+                "immediate",
+
+            source:
+                wallet.source ||
+                "wallet",
+
+            verified:
+                wallet.verified ===
+                true,
+
+            estimated:
+                wallet.estimated ===
+                true,
+
+            requiresAction:
+                false,
+
+            metadata:
+                wallet.metadata ||
+                {},
+        }),
+
+        normalizeFundingSource({
+            id:
+                "faction-vault",
+
+            label:
+                "Faction Vault",
+
+            amount:
+                factionVault.amount ??
+                factionVault.balance ??
+                0,
+
+            availability:
+                "request-dependent",
+
+            source:
+                factionVault.source ||
+                "faction-vault",
+
+            verified:
+                factionVault.verified ===
+                true,
+
+            estimated:
+                factionVault.estimated ===
+                true,
+
+            requiresAction:
+                true,
+
+            action: {
+                type:
+                    "request-transfer",
+
+                description:
+                    "Request funds from a faction banker.",
+            },
+
+            metadata:
+                factionVault.metadata ||
+                {},
+        }),
+
+        normalizeFundingSource({
+            id:
+                "investment-bank",
+
+            label:
+                "Investment Bank",
+
+            amount:
+                investmentBank.amount ??
+                investmentBank.balance ??
+                investmentBank.principal ??
+                0,
+
+            availability:
+                "locked",
+
+            source:
+                investmentBank.source ||
+                "investment-bank",
+
+            verified:
+                investmentBank.verified ===
+                true,
+
+            estimated:
+                investmentBank.estimated ===
+                true,
+
+            requiresAction:
+                false,
+
+            metadata: {
+                ...(
+                    investmentBank.metadata ||
+                    {}
+                ),
+
+                maturesAt:
+                    investmentBank.maturesAt ??
+                    null,
+            },
+        }),
+
+        normalizeFundingSource({
+            id:
+                "cayman",
+
+            label:
+                "Cayman",
+
+            amount:
+                cayman.amount ??
+                cayman.balance ??
+                0,
+
+            availability:
+                cayman.availability ||
+                (
+                    (
+                        cayman.amount ??
+                        cayman.balance
+                    ) !==
+                    undefined
+                        ? "accessible"
+                        : "unknown"
+                ),
+
+            source:
+                cayman.source ||
+                "cayman",
+
+            verified:
+                cayman.verified ===
+                true,
+
+            estimated:
+                cayman.estimated ===
+                true,
+
+            requiresAction:
+                cayman.requiresAction !==
+                false,
+
+            action:
+                cayman.action ||
+                null,
+
+            metadata:
+                cayman.metadata ||
+                {},
+        }),
+    ];
+
+    recordActivity(
+        "funding-sources-created",
+        {
+            sourceCount:
+                sources.length,
+        }
+    );
+
+    return sources;
+}
+
+function getLiquiditySnapshot(
+    financialState = {}
+) {
+    metrics.liquiditySnapshots +=
+        1;
+
+    metrics.lastLiquiditySnapshotAt =
+        Date.now();
+
+    const sources =
+        getFundingSources(
+            financialState
+        );
+
+    const immediateSources =
+        sources.filter(
+            source =>
+                source.availability ===
+                "immediate"
+        );
+
+    const conditionalSources =
+        sources.filter(
+            source =>
+                source.availability ===
+                    "request-dependent" ||
+                source.availability ===
+                    "accessible"
+        );
+
+    const lockedSources =
+        sources.filter(
+            source =>
+                source.availability ===
+                "locked"
+        );
+
+    const immediate =
+        immediateSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    const conditional =
+        conditionalSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    const locked =
+        lockedSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    const result = {
+        immediate:
+            roundMoney(
+                immediate
+            ),
+
+        conditional:
+            roundMoney(
+                conditional
+            ),
+
+        accessible:
+            roundMoney(
+                immediate +
+                conditional
+            ),
+
+        locked:
+            roundMoney(
+                locked
+            ),
+
+        totalKnown:
+            roundMoney(
+                immediate +
+                conditional +
+                locked
+            ),
+
+        sources:
+            cloneValue(
+                sources
+            ),
+
+        sourceGroups: {
+            immediate:
+                immediateSources.map(
+                    source =>
+                        source.id
+                ),
+
+            conditional:
+                conditionalSources.map(
+                    source =>
+                        source.id
+                ),
+
+            locked:
+                lockedSources.map(
+                    source =>
+                        source.id
+                ),
+        },
+
+        calculatedAt:
+            Date.now(),
+    };
+
+    recordActivity(
+        "liquidity-snapshot-created",
+        {
+            immediate:
+                result.immediate,
+
+            conditional:
+                result.conditional,
+
+            locked:
+                result.locked,
+        }
+    );
+
+    return result;
+}
+
+function evaluateAffordability(
+    amount,
+    financialState = {}
+) {
+    metrics.affordabilityEvaluations +=
+        1;
+
+    metrics.lastAffordabilityEvaluationAt =
+        Date.now();
+
+    const required =
+        requireFiniteNumber(
+            amount,
+            "Required amount",
+            {
+                minimum:
+                    0,
+            }
+        );
+
+    const liquidity =
+        getLiquiditySnapshot(
+            financialState
+        );
+
+    const immediateShortfall =
+        Math.max(
+            0,
+            required -
+                liquidity.immediate
+        );
+
+    const accessibleShortfall =
+        Math.max(
+            0,
+            required -
+                liquidity.accessible
+        );
+
+    let status;
+    let affordable;
+    let requiresAction;
+
+    if (
+        required <=
+        liquidity.immediate
+    ) {
+        status =
+            "immediately-affordable";
+
+        affordable =
+            true;
+
+        requiresAction =
+            false;
+    } else if (
+        required <=
+        liquidity.accessible
+    ) {
+        status =
+            "conditionally-affordable";
+
+        affordable =
+            true;
+
+        requiresAction =
+            true;
+    } else {
+        status =
+            "not-affordable";
+
+        affordable =
+            false;
+
+        requiresAction =
+            false;
+    }
+
+    let remaining =
+        required;
+
+    const fundingPlan = [];
+
+    const usableSources =
+        liquidity.sources
+            .filter(
+                source =>
+                    source.availability ===
+                        "immediate" ||
+                    source.availability ===
+                        "request-dependent" ||
+                    source.availability ===
+                        "accessible"
+            )
+            .sort(
+                (
+                    first,
+                    second
+                ) => {
+                    const priority = {
+                        immediate:
+                            0,
+
+                        accessible:
+                            1,
+
+                        "request-dependent":
+                            2,
+                    };
+
+                    return (
+                        (
+                            priority[
+                                first
+                                    .availability
+                            ] ??
+                            99
+                        ) -
+                        (
+                            priority[
+                                second
+                                    .availability
+                            ] ??
+                            99
+                        )
+                    );
+                }
+            );
+
+    for (
+        const source of
+            usableSources
+    ) {
+        if (
+            remaining <=
+            0
+        ) {
+            break;
+        }
+
+        if (
+            source.amount <=
+            0
+        ) {
+            continue;
+        }
+
+        const useAmount =
+            Math.min(
+                source.amount,
+                remaining
+            );
+
+        fundingPlan.push({
+            sourceId:
+                source.id,
+
+            label:
+                source.label,
+
+            amount:
+                roundMoney(
+                    useAmount
+                ),
+
+            availability:
+                source.availability,
+
+            requiresAction:
+                source.requiresAction,
+
+            action:
+                cloneValue(
+                    source.action
+                ),
+        });
+
+        remaining -=
+            useAmount;
+    }
+
+    const result = {
+        required:
+            roundMoney(
+                required
+            ),
+
+        affordable,
+
+        status,
+
+        requiresAction,
+
+        immediateShortfall:
+            roundMoney(
+                immediateShortfall
+            ),
+
+        accessibleShortfall:
+            roundMoney(
+                accessibleShortfall
+            ),
+
+        unfunded:
+            roundMoney(
+                Math.max(
+                    0,
+                    remaining
+                )
+            ),
+
+        fundingPlan,
+
+        liquidity,
+
+        evaluatedAt:
+            Date.now(),
+    };
+
+    recordActivity(
+        "affordability-evaluated",
+        {
+            required:
+                result.required,
+
+            affordable:
+                result.affordable,
+
+            status:
+                result.status,
+
+            requiresAction:
+                result.requiresAction,
+        }
+    );
+
+    return result;
+}
+
     function inspect() {
         return {
             service:
@@ -1952,6 +2640,12 @@
             percentageToRate,
 
             rateToPercentage,
+
+            getFundingSources,
+
+            getLiquiditySnapshot,
+
+            evaluateAffordability,
 
             inspect,
         });
