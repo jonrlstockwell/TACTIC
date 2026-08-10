@@ -612,35 +612,45 @@
                 },
             },
 
-            description:
-                "The Personal Vault deposit amount field.",
+        {
+                key:
+                    "VAULT.DEPOSIT_AMOUNT",
 
-            pageId:
-                "properties",
+                selector:
+                    SELECTORS
+                        .VAULT
+                        .DEPOSIT_AMOUNT,
 
-            required:
-                false,
+                description:
+                    "The Personal Vault deposit amount field.",
 
-            verified:
-                true,
+                pageId:
+                    "properties",
 
-            visible:
-                true,
+                required:
+                    false,
 
-            metadata: {
-                category:
-                    "personal-vault",
+                verified:
+                    true,
 
-                destination:
-                    "personal-vault",
+                visible:
+                    true,
 
-                role:
-                    "amount-input",
+                metadata: {
+                    category:
+                        "personal-vault",
 
-                publicAction:
-                    "fill",
+                    destination:
+                        "personal-vault",
+
+                    role:
+                        "amount-input",
+
+                    publicAction:
+                        "fill",
+                },
             },
-        },
+
 
         {
             key:
