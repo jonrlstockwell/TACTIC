@@ -88,7 +88,7 @@
 // Selector registry and Torn selector catalog.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=4
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=5
 //
 // DOM page subsystem.
 //
