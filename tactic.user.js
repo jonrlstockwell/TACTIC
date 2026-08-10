@@ -88,7 +88,7 @@
 // Selector registry and Torn selector catalog.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/selectors/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/selectors.js?v=4
 //
 // DOM page subsystem.
 //
@@ -99,7 +99,7 @@
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/faction.js?v=7
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/bank.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/vault.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/pages/api.js?v=4
 //
 // Torn SPA navigation detection.

@@ -89,6 +89,9 @@
 
     const SELECTOR_KEYS =
         Object.freeze({
+            BALANCE:
+                "VAULT.BALANCE",
+
             AMOUNT:
                 "VAULT.DEPOSIT_AMOUNT",
 
@@ -108,6 +111,24 @@
 
         readinessFailures:
             0,
+
+        balanceReads:
+            0,
+
+        balanceReadSuccesses:
+            0,
+
+        balanceReadFailures:
+            0,
+
+        financialSnapshotReads:
+            0,
+
+        lastBalance:
+            null,
+
+        lastBalanceReadAt:
+            null,
 
         amountSets:
             0,
@@ -292,6 +313,270 @@
                 }
             )
         );
+    }
+
+    function getBalanceElement() {
+        return findByKey(
+            SELECTOR_KEYS.BALANCE
+        );
+    }
+
+    function normalizeText(
+        value
+    ) {
+        return String(
+            value ?? ""
+        )
+            .replace(
+                /\s+/g,
+                " "
+            )
+            .trim();
+    }
+
+    function parseMoney(
+        value
+    ) {
+        const normalized =
+            normalizeText(
+                value
+            );
+
+        if (!normalized) {
+            return null;
+        }
+
+        const numericText =
+            normalized.replace(
+                /[^0-9.-]/g,
+                ""
+            );
+
+        if (!numericText) {
+            return null;
+        }
+
+        const numeric =
+            Number(
+                numericText
+            );
+
+        return Number.isSafeInteger(
+            numeric
+        ) &&
+        numeric >= 0
+            ? numeric
+            : null;
+    }
+
+    function getBalance() {
+        metrics.balanceReads +=
+            1;
+
+        metrics.lastBalanceReadAt =
+            Date.now();
+
+        const element =
+            getBalanceElement();
+
+        if (!element) {
+            metrics.balanceReadFailures +=
+                1;
+
+            return {
+                available:
+                    false,
+
+                verified:
+                    false,
+
+                value:
+                    null,
+
+                reason:
+                    "balance-element-not-found",
+
+                readAt:
+                    metrics
+                        .lastBalanceReadAt,
+            };
+        }
+
+        const raw =
+            normalizeText(
+                element.textContent
+            );
+
+        const value =
+            parseMoney(
+                raw
+            );
+
+        if (
+            !Number.isSafeInteger(
+                value
+            )
+        ) {
+            metrics.balanceReadFailures +=
+                1;
+
+            return {
+                available:
+                    false,
+
+                verified:
+                    false,
+
+                value:
+                    null,
+
+                raw,
+
+                reason:
+                    "balance-value-invalid",
+
+                readAt:
+                    metrics
+                        .lastBalanceReadAt,
+            };
+        }
+
+        metrics.balanceReadSuccesses +=
+            1;
+
+        metrics.lastBalance =
+            value;
+
+        recordActivity(
+            "balance-read",
+            {
+                value,
+            }
+        );
+
+        return {
+            available:
+                true,
+
+            verified:
+                true,
+
+            value,
+
+            raw,
+
+            source:
+                "personal-vault-balance",
+
+            selector:
+                getSelector(
+                    SELECTOR_KEYS.BALANCE
+                ),
+
+            readAt:
+                metrics
+                    .lastBalanceReadAt,
+        };
+    }
+
+    function getFinancialSnapshot() {
+        metrics.financialSnapshotReads +=
+            1;
+
+        const balance =
+            getBalance();
+
+        return {
+            id:
+                "personal-vault",
+
+            type:
+                "personal-vault",
+
+            name:
+                "Personal Vault",
+
+            ownership:
+                "personal",
+
+            balance,
+
+            spendable:
+                balance.available,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "self-accessible",
+
+            access: {
+                canDeposit:
+                    Boolean(
+                        getAmountInput()
+                    ),
+
+                canSelfWithdraw:
+                    true,
+
+                requiresThirdParty:
+                    false,
+
+                requiresTravel:
+                    false,
+
+                timing:
+                    "immediate-on-access",
+            },
+
+            accessCost: {
+                timeMinutes:
+                    0,
+
+                timeKnown:
+                    true,
+
+                risk:
+                    "low",
+
+                dependencies: [],
+            },
+
+            funding: {
+                usableForRecommendations:
+                    balance.available,
+
+                affordabilityClass:
+                    balance.available
+                        ? "affordable-after-self-withdrawal"
+                        : "unavailable",
+
+                transferRequired:
+                    false,
+
+                selfWithdrawalRequired:
+                    true,
+            },
+
+            state: {
+                live:
+                    balance.available,
+
+                cached:
+                    false,
+            },
+
+            verifiedAt:
+                balance.verified
+                    ? balance.readAt
+                    : null,
+
+            readAt:
+                Date.now(),
+
+            source:
+                "personal-vault-dom-helper",
+        };
     }
 
     function getAmountInput() {
@@ -904,7 +1189,21 @@
 
             readiness,
 
+            financialSnapshot:
+                getFinancialSnapshot(),
+
             elements: {
+
+                balance:
+                    Boolean(
+                        getBalanceElement()
+                    ),
+
+                balanceReadable:
+                    getBalance()
+                        .available ===
+                    true,
+
                 amountInput:
                     Boolean(
                         input
@@ -929,6 +1228,12 @@
             },
 
             selectors: {
+
+                balance:
+                    getSelector(
+                        SELECTOR_KEYS.BALANCE
+                    ),
+
                 amount:
                     getSelector(
                         SELECTOR_KEYS.AMOUNT
@@ -998,6 +1303,12 @@
                 "page.inspect":
                     "inspect",
 
+                "finance.balance.read":
+                    "getBalance",
+
+                "finance.snapshot.read":
+                    "getFinancialSnapshot",
+
                 "amount.read":
                     "getAmountInput",
 
@@ -1025,10 +1336,19 @@
 
             metadata: {
                 category:
+                    "finance",
+
+                secondaryCategory:
                     "deposit",
 
                 destination:
                     "personal-vault",
+
+                fundingSource:
+                    true,
+
+                liquidityClass:
+                    "self-accessible",
 
                 selectorsVerified:
                     true,
@@ -1045,6 +1365,10 @@
 
             isReady,
             waitUntilReady,
+
+            getBalanceElement,
+            getBalance,
+            getFinancialSnapshot,
 
             getAmountInput,
             getSubmitButton,
@@ -1084,6 +1408,8 @@
                 "page.ready",
                 "page.wait-until-ready",
                 "page.inspect",
+                "finance.balance.read",
+                "finance.snapshot.read",
                 "amount.read",
                 "amount.set",
                 "amount.maximum",

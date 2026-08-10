@@ -159,12 +159,18 @@
 
             VAULT: {
                 /*
-                 * Verified Personal Vault deposit controls.
-                 *
-                 * The deposit amount field is distinguished from the
-                 * withdrawal field by its data-deposit and data-max
-                 * attributes.
-                 */
+                * Verified Personal Vault controls.
+                *
+                * The displayed vault balance uses Torn's unique
+                * #vault-wvalue element.
+                *
+                * The deposit amount field is distinguished from the
+                * withdrawal field by its data-deposit and data-max
+                * attributes.
+                */
+                BALANCE:
+                    "#vault-wvalue",
+
                 DEPOSIT_AMOUNT:
                     'input.input-money[data-deposit][data-max]',
 
@@ -565,13 +571,46 @@
         },
 
         {
-            key:
-                "VAULT.DEPOSIT_AMOUNT",
+                key:
+                    "VAULT.BALANCE",
 
-            selector:
-                SELECTORS
-                    .VAULT
-                    .DEPOSIT_AMOUNT,
+                selector:
+                    SELECTORS
+                        .VAULT
+                        .BALANCE,
+
+                description:
+                    "The current player's displayed Personal Vault balance.",
+
+                pageId:
+                    "properties",
+
+                required:
+                    false,
+
+                verified:
+                    true,
+
+                visible:
+                    true,
+
+                metadata: {
+                    category:
+                        "personal-vault",
+
+                    destination:
+                        "personal-vault",
+
+                    role:
+                        "balance-display",
+
+                    repository:
+                        "finance",
+
+                    dataKey:
+                        "personal-vault",
+                },
+            },
 
             description:
                 "The Personal Vault deposit amount field.",
