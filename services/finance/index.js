@@ -20,6 +20,9 @@
  * - Calculate simple and effective annualized returns
  * - Produce transparent recommendation results
  * - Expose diagnostics and calculation metrics
+ * - Normalize available financial funding sources
+ * - Classify liquidity by access requirements
+ * - Evaluate affordability across multiple funding sources
  *
  * Does NOT:
  * - Read Torn's DOM
@@ -36,6 +39,9 @@
  * - recommendInvestment()
  * - estimatePrincipalFromPayout()
  * - calculateCompoundProjection()
+ * - getFundingSources()
+ * - getLiquiditySnapshot()
+ * - evaluateAffordability()
  * - inspect()
  *
  * ============================================================
@@ -2000,6 +2006,10 @@ function getFundingSources(
         financialState.wallet ||
         {};
 
+    const personalVault =
+        financialState.personalVault ||
+        {};
+
     const factionVault =
         financialState.factionVault ||
         {};
@@ -2045,6 +2055,49 @@ function getFundingSources(
 
             metadata:
                 wallet.metadata ||
+                {},
+        }),
+
+        normalizeFundingSource({
+            id:
+                "personal-vault",
+
+            label:
+                "Personal Vault",
+
+            amount:
+                personalVault.amount ??
+                personalVault.balance ??
+                0,
+
+            availability:
+                "self-accessible",
+
+            source:
+                personalVault.source ||
+                "personal-vault",
+
+            verified:
+                personalVault.verified ===
+                true,
+
+            estimated:
+                personalVault.estimated ===
+                true,
+
+            requiresAction:
+                true,
+
+            action: {
+                type:
+                    "self-withdrawal",
+
+                description:
+                    "Withdraw funds from the Personal Vault.",
+            },
+
+            metadata:
+                personalVault.metadata ||
                 {},
         }),
 
@@ -2154,7 +2207,7 @@ function getFundingSources(
                         cayman.balance
                     ) !==
                     undefined
-                        ? "accessible"
+                        ? "travel-dependent"
                         : "unknown"
                 ),
 
@@ -2216,13 +2269,36 @@ function getLiquiditySnapshot(
                 "immediate"
         );
 
-    const conditionalSources =
+    const selfAccessibleSources =
         sources.filter(
             source =>
                 source.availability ===
-                    "request-dependent" ||
+                "self-accessible"
+        );
+
+    const requestDependentSources =
+        sources.filter(
+            source =>
                 source.availability ===
-                    "accessible"
+                "request-dependent"
+        );
+
+    const travelDependentSources =
+        sources.filter(
+            source =>
+                source.availability ===
+                "travel-dependent"
+        );
+
+    /*
+     * Backward compatibility for any source still using the
+     * older generic "accessible" classification.
+     */
+    const legacyAccessibleSources =
+        sources.filter(
+            source =>
+                source.availability ===
+                "accessible"
         );
 
     const lockedSources =
@@ -2243,8 +2319,8 @@ function getLiquiditySnapshot(
             0
         );
 
-    const conditional =
-        conditionalSources.reduce(
+    const selfAccessible =
+        selfAccessibleSources.reduce(
             (
                 total,
                 source
@@ -2253,6 +2329,53 @@ function getLiquiditySnapshot(
                 source.amount,
             0
         );
+
+    const requestDependent =
+        requestDependentSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    const travelDependent =
+        travelDependentSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    const legacyAccessible =
+        legacyAccessibleSources.reduce(
+            (
+                total,
+                source
+            ) =>
+                total +
+                source.amount,
+            0
+        );
+
+    /*
+     * Keep conditional for compatibility with existing Advisor
+     * and UI consumers.
+     */
+    const conditional =
+        selfAccessible +
+        requestDependent +
+        travelDependent +
+        legacyAccessible;
+
+    const accessible =
+        immediate +
+        conditional;
 
     const locked =
         lockedSources.reduce(
@@ -2271,6 +2394,25 @@ function getLiquiditySnapshot(
                 immediate
             ),
 
+        selfAccessible:
+            roundMoney(
+                selfAccessible
+            ),
+
+        requestDependent:
+            roundMoney(
+                requestDependent
+            ),
+
+        travelDependent:
+            roundMoney(
+                travelDependent
+            ),
+
+        /*
+         * Compatibility aggregate:
+         * everything spendable that is not already immediate.
+         */
         conditional:
             roundMoney(
                 conditional
@@ -2278,8 +2420,7 @@ function getLiquiditySnapshot(
 
         accessible:
             roundMoney(
-                immediate +
-                conditional
+                accessible
             ),
 
         locked:
@@ -2289,8 +2430,7 @@ function getLiquiditySnapshot(
 
         totalKnown:
             roundMoney(
-                immediate +
-                conditional +
+                accessible +
                 locked
             ),
 
@@ -2306,11 +2446,36 @@ function getLiquiditySnapshot(
                         source.id
                 ),
 
-            conditional:
-                conditionalSources.map(
+            selfAccessible:
+                selfAccessibleSources.map(
                     source =>
                         source.id
                 ),
+
+            requestDependent:
+                requestDependentSources.map(
+                    source =>
+                        source.id
+                ),
+
+            travelDependent:
+                travelDependentSources.map(
+                    source =>
+                        source.id
+                ),
+
+            /*
+             * Existing consumers can continue using this group.
+             */
+            conditional: [
+                ...selfAccessibleSources,
+                ...requestDependentSources,
+                ...travelDependentSources,
+                ...legacyAccessibleSources,
+            ].map(
+                source =>
+                    source.id
+            ),
 
             locked:
                 lockedSources.map(
@@ -2329,11 +2494,26 @@ function getLiquiditySnapshot(
             immediate:
                 result.immediate,
 
+            selfAccessible:
+                result.selfAccessible,
+
+            requestDependent:
+                result.requestDependent,
+
+            travelDependent:
+                result.travelDependent,
+
             conditional:
                 result.conditional,
 
+            accessible:
+                result.accessible,
+
             locked:
                 result.locked,
+
+            totalKnown:
+                result.totalKnown,
         }
     );
 
@@ -2430,6 +2610,8 @@ function evaluateAffordability(
                     source.availability ===
                         "immediate" ||
                     source.availability ===
+                        "self-accessible" ||
+                    source.availability ===
                         "request-dependent" ||
                     source.availability ===
                         "accessible"
@@ -2443,11 +2625,21 @@ function evaluateAffordability(
                         immediate:
                             0,
 
-                        accessible:
+                        "self-accessible":
                             1,
 
                         "request-dependent":
                             2,
+
+                        "travel-dependent":
+                            3,
+
+                        /*
+                        * Legacy generic accessibility remains supported,
+                        * but ranks after explicitly classified sources.
+                        */
+                        accessible:
+                            4,
                     };
 
                     return (
