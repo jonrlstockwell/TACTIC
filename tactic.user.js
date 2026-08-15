@@ -106,7 +106,7 @@
 // Global DOM helpers.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/global/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/global/cayman.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/global/cayman.js?v=2
 //
 // Torn SPA navigation detection.
 //
