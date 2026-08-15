@@ -2614,6 +2614,8 @@ function evaluateAffordability(
                     source.availability ===
                         "request-dependent" ||
                     source.availability ===
+                        "travel-dependent" ||
+                    source.availability ===
                         "accessible"
             )
             .sort(
