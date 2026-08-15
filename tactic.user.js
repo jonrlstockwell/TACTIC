@@ -124,7 +124,7 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/index.js?v=3
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/advisor.js?v=6
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/advisor.js?v=7
 //
 //
 // ============================================================
