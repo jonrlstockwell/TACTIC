@@ -322,7 +322,7 @@
                     false,
 
                 risk:
-                    "low",
+                    "elevated",
 
                 dependencies: [
                     "travel-to-cayman-islands",

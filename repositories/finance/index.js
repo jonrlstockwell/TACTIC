@@ -138,6 +138,12 @@
 
     const WALLET_OBSERVER_GROUP =
         "repository:finance:wallet";
+    
+    const CAYMAN_OBSERVER_NAME =
+        "repository:finance:cayman";
+
+    const CAYMAN_OBSERVER_GROUP =
+        "repository:finance:cayman";
 
     const BANK_OBSERVER_GROUP =
         "repository:finance:investment-bank";
@@ -150,6 +156,9 @@
 
     const PERSONAL_VAULT_HELPER_ID =
         "personal-vault";
+
+    const CAYMAN_HELPER_ID =
+        "cayman";
 
     const FACTION_VAULT_ROOT_SELECTOR =
         "#tab\\=armoury\\&sub\\=donate";
@@ -195,6 +204,19 @@
         60 *
         1_000;
 
+    const CAYMAN_CACHE_STORAGE_KEY =
+        "finance:cayman-cache";
+
+    const CAYMAN_CACHE_VERSION =
+        1;
+
+    const CAYMAN_CACHE_MAX_AGE_MS =
+        7 *
+        24 *
+        60 *
+        60 *
+        1_000;
+
     const WALLET_SELECTOR_PATH =
         "USER.WALLET";
 
@@ -225,6 +247,9 @@
 
             PERSONAL_VAULT:
                 "personalVault",
+
+            CAYMAN:
+                "cayman",
         });
 
     const STATE_KEYS =
@@ -240,6 +265,9 @@
 
             PERSONAL_VAULT:
                 "finance.personalVault",
+
+            CAYMAN:
+                "finance.cayman",
         });
 
     const EVENT_NAMES =
@@ -255,6 +283,9 @@
 
             PERSONAL_VAULT_CHANGED:
                 "finance:personal-vault-changed",
+
+            CAYMAN_CHANGED:
+                "finance:cayman-changed",
 
             INVESTMENT_STRATEGY_CHANGED:
                 "finance:investment-strategy-changed",
@@ -276,6 +307,10 @@
             ],
             [
                 DATA_KEYS.PERSONAL_VAULT,
+                new Set(),
+            ],
+            [
+                DATA_KEYS.CAYMAN,
                 new Set(),
             ],
         ]);
@@ -300,6 +335,9 @@
             null,
 
         personalVault:
+            null,
+
+        cayman:
             null,
 
         investmentStrategy:
@@ -433,6 +471,39 @@
         personalVaultCacheReadFailures:
             0,
 
+        caymanReads:
+            0,
+
+        caymanRefreshes:
+            0,
+
+        caymanChanges:
+            0,
+
+        caymanNoChanges:
+            0,
+
+        caymanUnavailableReads:
+            0,
+
+        caymanCacheReads:
+            0,
+
+        caymanCacheHits:
+            0,
+
+        caymanCacheMisses:
+            0,
+
+        caymanCacheWrites:
+            0,
+
+        caymanCacheWriteFailures:
+            0,
+
+        caymanCacheReadFailures:
+            0,
+
         fundingSourceSnapshots:
             0,
 
@@ -500,6 +571,18 @@
             null,
 
         lastPersonalVaultCacheWriteAt:
+            null,
+
+        lastCaymanReadAt:
+            null,
+
+        lastCaymanChangeAt:
+            null,
+
+        lastCaymanCacheReadAt:
+            null,
+
+        lastCaymanCacheWriteAt:
             null,
 
         lastFundingSourceSnapshotAt:
@@ -1166,6 +1249,16 @@
         );
     }
 
+    function getCaymanHelper() {
+        return (
+            dom.global
+                ?.getHelper?.(
+                    CAYMAN_HELPER_ID
+                ) ||
+            null
+        );
+    }
+
     function createPersonalVaultCacheRecord(
         snapshot
     ) {
@@ -1719,6 +1812,584 @@
     }
 
     function personalVaultSnapshotsEqual(
+        first,
+        second
+    ) {
+        if (
+            !first ||
+            !second
+        ) {
+            return false;
+        }
+
+        return (
+            first.value ===
+                second.value &&
+            first.available ===
+                second.available &&
+            first.verified ===
+                second.verified &&
+            first.live ===
+                second.live &&
+            first.cached ===
+                second.cached &&
+            first.stale ===
+                second.stale
+        );
+    }
+
+    function createCaymanCacheRecord(
+        snapshot
+    ) {
+        return {
+            version:
+                CAYMAN_CACHE_VERSION,
+
+            savedAt:
+                Date.now(),
+
+            lastLiveReadAt:
+                snapshot
+                    ?.lastLiveReadAt ||
+                snapshot
+                    ?.updatedAt ||
+                Date.now(),
+
+            snapshot:
+                cloneValue(
+                    snapshot
+                ),
+        };
+    }
+
+    function saveCaymanCache(
+        snapshot
+    ) {
+        if (
+            !storage ||
+            typeof storage.set !==
+                "function" ||
+            !snapshot ||
+            snapshot.live !==
+                true ||
+            snapshot.verified !==
+                true
+        ) {
+            return false;
+        }
+
+        try {
+            storage.set(
+                CAYMAN_CACHE_STORAGE_KEY,
+                createCaymanCacheRecord(
+                    snapshot
+                )
+            );
+
+            metrics.caymanCacheWrites +=
+                1;
+
+            metrics.lastCaymanCacheWriteAt =
+                Date.now();
+
+            return true;
+        } catch (error) {
+            metrics
+                .caymanCacheWriteFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not save the Cayman cache",
+                {
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
+    function readCaymanCacheRecord() {
+        metrics.caymanCacheReads +=
+            1;
+
+        metrics.lastCaymanCacheReadAt =
+            Date.now();
+
+        if (
+            !storage ||
+            typeof storage.get !==
+                "function"
+        ) {
+            metrics.caymanCacheMisses +=
+                1;
+
+            return null;
+        }
+
+        try {
+            const record =
+                storage.get(
+                    CAYMAN_CACHE_STORAGE_KEY,
+                    null
+                );
+
+            if (
+                !record ||
+                typeof record !==
+                    "object" ||
+                record.version !==
+                    CAYMAN_CACHE_VERSION ||
+                !record.snapshot
+            ) {
+                metrics.caymanCacheMisses +=
+                    1;
+
+                return null;
+            }
+
+            metrics.caymanCacheHits +=
+                1;
+
+            return cloneValue(
+                record
+            );
+        } catch (error) {
+            metrics
+                .caymanCacheReadFailures +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read the Cayman cache",
+                {
+                    error,
+                }
+            );
+
+            return null;
+        }
+    }
+
+    function createCachedCaymanSnapshot(
+        record,
+        reason
+    ) {
+        if (
+            !record ||
+            !record.snapshot
+        ) {
+            return null;
+        }
+
+        const cached =
+            cloneValue(
+                record.snapshot
+            );
+
+        const now =
+            Date.now();
+
+        const lastLiveReadAt =
+            record.lastLiveReadAt ||
+            cached.lastLiveReadAt ||
+            cached.updatedAt ||
+            record.savedAt ||
+            null;
+
+        const cacheAgeMs =
+            Number.isFinite(
+                lastLiveReadAt
+            )
+                ? Math.max(
+                    0,
+                    now -
+                        lastLiveReadAt
+                )
+                : null;
+
+        cached.available =
+            Number.isFinite(
+                cached.value
+            );
+
+        cached.verified =
+            cached.available;
+
+        cached.ready =
+            false;
+
+        cached.live =
+            false;
+
+        cached.cached =
+            true;
+
+        cached.stale =
+            Number.isFinite(
+                cacheAgeMs
+            )
+                ? cacheAgeMs >
+                CAYMAN_CACHE_MAX_AGE_MS
+                : true;
+
+        cached.reason =
+            reason;
+
+        cached.source =
+            "repository:finance-persistent-cache";
+
+        cached.cachedAt =
+            record.savedAt ||
+            now;
+
+        cached.lastLiveReadAt =
+            lastLiveReadAt;
+
+        cached.cacheAgeMs =
+            cacheAgeMs;
+
+        cached.updatedAt =
+            now;
+
+        return cached;
+    }
+
+    function loadCaymanCache(
+        reason =
+            "persistent-cache"
+    ) {
+        const record =
+            readCaymanCacheRecord();
+
+        if (!record) {
+            return null;
+        }
+
+        return createCachedCaymanSnapshot(
+            record,
+            reason
+        );
+    }
+
+    function createUnavailableCaymanSnapshot(
+        reason
+    ) {
+        const previous =
+            repositoryState.cayman;
+
+        if (
+            previous &&
+            Number.isFinite(
+                previous.value
+            )
+        ) {
+            const cached =
+                createCachedCaymanSnapshot(
+                    {
+                        version:
+                            CAYMAN_CACHE_VERSION,
+
+                        savedAt:
+                            previous.cachedAt ||
+                            previous.updatedAt ||
+                            Date.now(),
+
+                        lastLiveReadAt:
+                            previous.lastLiveReadAt ||
+                            previous.updatedAt ||
+                            null,
+
+                        snapshot:
+                            previous,
+                    },
+                    reason
+                );
+
+            if (cached) {
+                return cached;
+            }
+        }
+
+        const persisted =
+            loadCaymanCache(
+                reason
+            );
+
+        if (persisted) {
+            return persisted;
+        }
+
+        return {
+            type:
+                DATA_KEYS.CAYMAN,
+
+            id:
+                "cayman",
+
+            name:
+                "Cayman",
+
+            ownership:
+                "personal",
+
+            value:
+                null,
+
+            available:
+                false,
+
+            verified:
+                false,
+
+            ready:
+                false,
+
+            live:
+                false,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                false,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                "travel-dependent",
+
+            access: {
+                canDeposit:
+                    false,
+
+            canSelfWithdraw:
+                true,
+
+                requiresThirdParty:
+                    false,
+
+                requiresTravel:
+                    true,
+
+                timing:
+                    "travel-required",
+            },
+
+            accessCost: {
+                timeMinutes:
+                    null,
+
+                timeKnown:
+                    false,
+
+                risk:
+                    "elevated",
+
+                dependencies: [
+                    "travel-to-cayman-islands",
+                ],
+            },
+
+            funding: {
+                usableForRecommendations:
+                    false,
+
+                affordabilityClass:
+                    "unavailable",
+
+                transferRequired:
+                    true,
+
+                travelRequired:
+                    true,
+            },
+
+            reason,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function createCaymanSnapshot(
+        helperSnapshot,
+        reason
+    ) {
+        const balanceValue =
+            helperSnapshot
+                ?.balance
+                ?.value;
+
+        const available =
+            Number.isFinite(
+                balanceValue
+            ) &&
+            helperSnapshot
+                ?.balance
+                ?.available ===
+            true;
+
+        return {
+            type:
+                DATA_KEYS.CAYMAN,
+
+            id:
+                "cayman",
+
+            name:
+                "Cayman",
+
+            ownership:
+                helperSnapshot
+                    ?.ownership ||
+                "personal",
+
+            value:
+                available
+                    ? balanceValue
+                    : null,
+
+            raw:
+                helperSnapshot
+                    ?.balance
+                    ?.raw ||
+                "",
+
+            available,
+
+            verified:
+                available &&
+                helperSnapshot
+                    ?.balance
+                    ?.verified ===
+                true,
+
+            ready:
+                available,
+
+            live:
+                available,
+
+            cached:
+                false,
+
+            stale:
+                false,
+
+            spendable:
+                helperSnapshot
+                    ?.spendable ===
+                true,
+
+            immediatelyAvailable:
+                false,
+
+            liquidityClass:
+                helperSnapshot
+                    ?.liquidityClass ||
+                "travel-dependent",
+
+            access:
+                cloneValue(
+                    helperSnapshot
+                        ?.access ||
+                    {
+                        canDeposit:
+                            false,
+
+                        canSelfWithdraw:
+                            true,
+
+                        requiresThirdParty:
+                            false,
+
+                        requiresTravel:
+                            true,
+
+                        timing:
+                            "travel-required",
+                    }
+                ),
+
+            accessCost:
+                cloneValue(
+                    helperSnapshot
+                        ?.accessCost ||
+                    {
+                        timeMinutes:
+                            null,
+
+                        timeKnown:
+                            false,
+
+                        risk:
+                            "elevated",
+
+                        dependencies: [
+                            "travel-to-cayman-islands",
+                        ],
+                    }
+                ),
+
+            funding:
+                cloneValue(
+                    helperSnapshot
+                        ?.funding ||
+                    {
+                        usableForRecommendations:
+                            available,
+
+                        affordabilityClass:
+                            available
+                                ? "affordable-after-travel"
+                                : "unavailable",
+
+                        transferRequired:
+                            true,
+
+                        travelRequired:
+                            true,
+                    }
+                ),
+
+            helperSnapshot:
+                cloneValue(
+                    helperSnapshot
+                ),
+
+            reason,
+
+            lastLiveReadAt:
+                available
+                    ? Date.now()
+                    : null,
+
+            source:
+                "repository:finance",
+
+            updatedAt:
+                Date.now(),
+        };
+    }
+
+    function caymanSnapshotsEqual(
         first,
         second
     ) {
@@ -3464,6 +4135,110 @@
         };
     }
 
+    function updateCaymanState(
+        cayman,
+        reason,
+        forceNotify =
+            false
+    ) {
+        const previousCayman =
+            repositoryState.cayman;
+
+        const changed =
+            !caymanSnapshotsEqual(
+                previousCayman,
+                cayman
+            );
+
+        repositoryState.cayman =
+            cayman;
+
+        publishState(
+            STATE_KEYS.CAYMAN,
+            cayman,
+            reason,
+            forceNotify
+        );
+
+        if (
+            !changed &&
+            !forceNotify
+        ) {
+            metrics.caymanNoChanges +=
+                1;
+
+            return {
+                changed:
+                    false,
+
+                cayman:
+                    cloneValue(
+                        cayman
+                    ),
+            };
+        }
+
+        metrics.caymanChanges +=
+            1;
+
+        metrics.lastCaymanChangeAt =
+            Date.now();
+
+        notifySubscribers(
+            DATA_KEYS.CAYMAN,
+            cayman,
+            previousCayman,
+            reason
+        );
+
+        events?.emit?.(
+            EVENT_NAMES.CAYMAN_CHANGED,
+            {
+                cayman:
+                    cloneValue(
+                        cayman
+                    ),
+
+                previousCayman:
+                    cloneValue(
+                        previousCayman
+                    ),
+
+                reason,
+
+                timestamp:
+                    Date.now(),
+            }
+        );
+
+        recordActivity(
+            "cayman-changed",
+            {
+                available:
+                    cayman.available,
+
+                value:
+                    cayman.value,
+
+                live:
+                    cayman.live,
+
+                cached:
+                    cayman.cached,
+            }
+        );
+
+        return {
+            changed:
+                true,
+
+            cayman:
+                cloneValue(
+                    cayman
+                ),
+        };
+    }
+
     function readWalletFromDom(
         source =
             "dom-read"
@@ -3996,6 +4771,142 @@
         );
     }
 
+    function readCayman(
+        reason =
+            "manual-read"
+    ) {
+        metrics.caymanReads +=
+            1;
+
+        metrics.lastCaymanReadAt =
+            Date.now();
+
+        const helper =
+            getCaymanHelper();
+
+        if (
+            !helper ||
+            typeof helper
+                .getFinancialSnapshot !==
+                "function"
+        ) {
+            metrics.caymanUnavailableReads +=
+                1;
+
+            return createUnavailableCaymanSnapshot(
+                "cayman-helper-unavailable"
+            );
+        }
+
+        try {
+            const helperSnapshot =
+                helper.getFinancialSnapshot();
+
+            if (
+                helperSnapshot
+                    ?.balance
+                    ?.available !==
+                    true ||
+                !Number.isFinite(
+                    helperSnapshot
+                        ?.balance
+                        ?.value
+                )
+            ) {
+                metrics.caymanUnavailableReads +=
+                    1;
+
+                return createUnavailableCaymanSnapshot(
+                    helperSnapshot
+                        ?.balance
+                        ?.reason ||
+                    "cayman-global-indicator-unavailable"
+                );
+            }
+
+            return createCaymanSnapshot(
+                helperSnapshot,
+                reason
+            );
+        } catch (error) {
+            metrics.caymanUnavailableReads +=
+                1;
+
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not read Cayman",
+                {
+                    error,
+                    reason,
+                }
+            );
+
+            return createUnavailableCaymanSnapshot(
+                "cayman-read-failed"
+            );
+        }
+    }
+
+    function refreshCayman(
+        reason =
+            "manual-refresh",
+        options = {}
+    ) {
+        metrics.caymanRefreshes +=
+            1;
+
+        const cayman =
+            readCayman(
+                reason
+            );
+
+        if (
+            cayman?.live ===
+                true &&
+            cayman?.verified ===
+                true
+        ) {
+            saveCaymanCache(
+                cayman
+            );
+        }
+
+        updateCaymanState(
+            cayman,
+            reason,
+            options.forceNotify ===
+                true
+        );
+
+        return cloneValue(
+            cayman
+        );
+    }
+
+    function getCayman(
+        options = {}
+    ) {
+        if (
+            options.refresh ===
+                true ||
+            repositoryState.cayman ===
+                null
+        ) {
+            refreshCayman(
+                options.reason ||
+                "get-cayman"
+            );
+        }
+
+        return cloneValue(
+            repositoryState.cayman
+        );
+    }
+
     function buildFinancialState() {
         const wallet =
             repositoryState.wallet;
@@ -4008,6 +4919,9 @@
 
         const investmentBank =
             repositoryState.investmentBank;
+
+        const cayman =
+            repositoryState.cayman;
 
         const investmentPayout =
             investmentBank
@@ -4268,11 +5182,81 @@
                 },
             },
 
-            /*
-             * Cayman is intentionally present but unknown until
-             * we build and verify its repository source.
-             */
-            cayman: {},
+            cayman: {
+                amount:
+                    Number.isFinite(
+                        cayman?.value
+                    )
+                        ? cayman.value
+                        : 0,
+
+                verified:
+                    cayman?.verified ===
+                    true,
+
+                estimated:
+                    false,
+
+                availability:
+                    cayman
+                        ?.liquidityClass ||
+                    "travel-dependent",
+
+                source:
+                    cayman?.source ||
+                    "finance-repository",
+
+                metadata: {
+                    available:
+                        cayman?.available ===
+                        true,
+
+                    live:
+                        cayman?.live ===
+                        true,
+
+                    cached:
+                        cayman?.cached ===
+                        true,
+
+                    stale:
+                        cayman?.stale ===
+                        true,
+
+                    lastLiveReadAt:
+                        cayman
+                            ?.lastLiveReadAt ||
+                        null,
+
+                    cacheAgeMs:
+                        cayman
+                            ?.cacheAgeMs ??
+                        null,
+
+                    canSelfWithdraw:
+                        cayman
+                            ?.access
+                            ?.canSelfWithdraw ===
+                        true,
+
+                    requiresTravel:
+                        cayman
+                            ?.access
+                            ?.requiresTravel ===
+                        true,
+
+                    risk:
+                        cayman
+                            ?.accessCost
+                            ?.risk ||
+                        "elevated",
+
+                    liquidityClass:
+                        cayman
+                            ?.liquidityClass ||
+                        "travel-dependent",
+                },
+            },
         };
     }
 
@@ -4596,7 +5580,13 @@
                     .INVESTMENT_BANK ||
             value ===
                 DATA_KEYS
-                    .FACTION_VAULT
+                    .FACTION_VAULT ||
+            value ===
+                DATA_KEYS
+                    .PERSONAL_VAULT ||
+            value ===
+                DATA_KEYS
+                    .CAYMAN
         ) {
             return value;
         }
@@ -4999,6 +5989,106 @@
         return true;
     }
 
+    async function startCaymanWatcher() {
+        const helper =
+            getCaymanHelper();
+
+        const selector =
+            helper
+                ?.getBalanceElement
+                ? helper
+                    .getBalanceElement()
+                : null;
+
+        /*
+         * The helper's DOM element may not yet exist at repository
+         * startup, so resolve the registered selector directly.
+         */
+        const caymanSelector =
+            dom.getSelector?.(
+                "USER.CAYMAN"
+            );
+
+        if (
+            typeof caymanSelector !==
+                "string" ||
+            !caymanSelector.trim()
+        ) {
+            refreshCayman(
+                "cayman-watcher-selector-unavailable"
+            );
+
+            return false;
+        }
+
+        try {
+            await dom.watchValue(
+                CAYMAN_OBSERVER_NAME,
+                caymanSelector,
+                rawValue =>
+                    getCaymanHelper()
+                        ?.parseBalance?.(
+                            rawValue
+                        ) ??
+                    null,
+                () => {
+                    refreshCayman(
+                        "cayman-global-balance-changed"
+                    );
+                },
+                {
+                    group:
+                        CAYMAN_OBSERVER_GROUP,
+
+                    attribute:
+                        "aria-label",
+
+                    emitInitial:
+                        true,
+
+                    waitForElement:
+                        true,
+
+                    rejectOnTimeout:
+                        false,
+
+                    timeoutMs:
+                        15_000,
+
+                    metadata: {
+                        repository:
+                            "finance",
+
+                        dataKey:
+                            DATA_KEYS.CAYMAN,
+                    },
+                }
+            );
+
+            return dom.hasObserver(
+                CAYMAN_OBSERVER_NAME
+            );
+        } catch (error) {
+            metrics.lastError =
+                createErrorSnapshot(
+                    error
+                );
+
+            logger?.error(
+                "Finance Repository could not start the Cayman watcher",
+                {
+                    error,
+                }
+            );
+
+            refreshCayman(
+                "cayman-watcher-start-failed"
+            );
+
+            return false;
+        }
+    }
+
     async function start() {
         if (
             repositoryState.started
@@ -5106,6 +6196,32 @@
             }
         }
 
+        /*
+         * Restore the most recently verified Cayman snapshot before
+         * attempting the global live read.
+         */
+        if (
+            repositoryState.cayman ===
+            null
+        ) {
+            const cachedCayman =
+                loadCaymanCache(
+                    "repository-startup-cache"
+                );
+
+            if (cachedCayman) {
+                repositoryState.cayman =
+                    cachedCayman;
+
+                publishState(
+                    STATE_KEYS.CAYMAN,
+                    cachedCayman,
+                    "repository-startup-cache",
+                    true
+                );
+            }
+        }
+
         const walletWatcherActive =
             await startWalletWatcher();
 
@@ -5117,6 +6233,9 @@
 
         const personalVaultWatcherActive =
             startPersonalVaultWatcher();
+
+        const caymanWatcherActive =
+            await startCaymanWatcher();
 
         health?.markHealthy?.(
             REPOSITORY_NAME,
@@ -5132,6 +6251,8 @@
                     factionVaultWatcherActive,
 
                     personalVaultWatcherActive,
+
+                    caymanWatcherActive,
                 },
             }
         );
@@ -5146,6 +6267,8 @@
                 factionVaultWatcherActive,
 
                 personalVaultWatcherActive,
+
+                caymanWatcherActive,
             }
         );
 
@@ -5159,6 +6282,8 @@
                 factionVaultWatcherActive,
 
                 personalVaultWatcherActive,
+
+                caymanWatcherActive,
             }
         );
 
@@ -5174,6 +6299,10 @@
 
         dom.disconnectGroup?.(
             WALLET_OBSERVER_GROUP
+        );
+
+        dom.disconnectGroup?.(
+            CAYMAN_OBSERVER_GROUP
         );
 
         if (
@@ -5299,6 +6428,12 @@
             )?.size ||
             0;
 
+        const caymanSubscribers =
+            subscribers.get(
+                DATA_KEYS.CAYMAN
+            )?.size ||
+            0;
+
         return {
             repository:
                 "finance",
@@ -5347,6 +6482,12 @@
                 cloneValue(
                     repositoryState
                         .personalVault
+                ),
+
+            cayman:
+                cloneValue(
+                    repositoryState
+                        .cayman
                 ),
 
             financialIntelligence: {
@@ -5502,6 +6643,53 @@
                     true,
             },
 
+            caymanCache: {
+                storageKey:
+                    CAYMAN_CACHE_STORAGE_KEY,
+
+                version:
+                    CAYMAN_CACHE_VERSION,
+
+                maxAgeMs:
+                    CAYMAN_CACHE_MAX_AGE_MS,
+
+                snapshotCached:
+                    repositoryState
+                        .cayman
+                        ?.cached ===
+                    true,
+
+                snapshotLive:
+                    repositoryState
+                        .cayman
+                        ?.live ===
+                    true,
+
+                cachedAt:
+                    repositoryState
+                        .cayman
+                        ?.cachedAt ||
+                    null,
+
+                lastLiveReadAt:
+                    repositoryState
+                        .cayman
+                        ?.lastLiveReadAt ||
+                    null,
+
+                ageMs:
+                    repositoryState
+                        .cayman
+                        ?.cacheAgeMs ??
+                    null,
+
+                stale:
+                    repositoryState
+                        .cayman
+                        ?.stale ===
+                    true,
+            },
+
 
             investmentBankHelper: {
                 id:
@@ -5546,6 +6734,22 @@
 
                 balanceReadable:
                     getPersonalVaultHelper()
+                        ?.getBalance?.()
+                        ?.available ===
+                    true,
+            },
+
+            caymanHelper: {
+                id:
+                    CAYMAN_HELPER_ID,
+
+                available:
+                    Boolean(
+                        getCaymanHelper()
+                    ),
+
+                balanceReadable:
+                    getCaymanHelper()
                         ?.getBalance?.()
                         ?.available ===
                     true,
@@ -5602,6 +6806,22 @@
                     balancePresent:
                         Boolean(
                             getPersonalVaultHelper()
+                                ?.getBalanceElement?.()
+                        ),
+                },
+
+                cayman: {
+                    name:
+                        CAYMAN_OBSERVER_NAME,
+
+                    active:
+                        dom.hasObserver(
+                            CAYMAN_OBSERVER_NAME
+                        ),
+
+                    balancePresent:
+                        Boolean(
+                            getCaymanHelper()
                                 ?.getBalanceElement?.()
                         ),
                 },
@@ -5680,6 +6900,22 @@
                                     .PERSONAL_VAULT
                             ),
                 },
+
+                cayman: {
+                    key:
+                        STATE_KEYS.CAYMAN,
+
+                    published:
+                        sharedState.has(
+                            STATE_KEYS.CAYMAN
+                        ),
+
+                    revision:
+                        sharedState
+                            .getRevision(
+                                STATE_KEYS.CAYMAN
+                            ),
+                },
             },
 
             subscribers: {
@@ -5695,11 +6931,15 @@
                 personalVault:
                     personalVaultSubscribers,
 
+                cayman:
+                    caymanSubscribers,
+
                 total:
                     walletSubscribers +
                     bankSubscribers +
                     factionVaultSubscribers +
-                    personalVaultSubscribers
+                    personalVaultSubscribers +
+                    caymanSubscribers,
             },
 
             metrics: {
@@ -5741,6 +6981,9 @@
 
             getPersonalVault,
             refreshPersonalVault,
+
+            getCayman,
+            refreshCayman,
 
             getFundingSources,
             getLiquiditySnapshot,
