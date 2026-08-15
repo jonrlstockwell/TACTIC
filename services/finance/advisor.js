@@ -1297,6 +1297,27 @@
                 ? liquidity.conditional
                 : 0;
 
+        const selfAccessible =
+            Number.isFinite(
+                liquidity.selfAccessible
+            )
+                ? liquidity.selfAccessible
+                : 0;
+
+        const requestDependent =
+            Number.isFinite(
+                liquidity.requestDependent
+            )
+                ? liquidity.requestDependent
+                : 0;
+
+        const travelDependent =
+            Number.isFinite(
+                liquidity.travelDependent
+            )
+                ? liquidity.travelDependent
+                : 0;
+
         const accessible =
             Number.isFinite(
                 liquidity.accessible
@@ -1327,6 +1348,14 @@
                 ? context.fundingSources
                 : [];
 
+        const personalVault =
+            fundingSources.find(
+                source =>
+                    source?.id ===
+                    "personal-vault"
+            ) ||
+            null;
+
         const factionVault =
             fundingSources.find(
                 source =>
@@ -1342,6 +1371,13 @@
                     "cayman"
             ) ||
             null;
+
+        const personalVaultValue =
+            Number.isFinite(
+                personalVault?.amount
+            )
+                ? personalVault.amount
+                : 0;
 
         const factionValue =
             Number.isFinite(
@@ -1436,13 +1472,35 @@
                 [];
 
             if (
+                immediate >
+                0
+            ) {
+                accessibleDetails.push(
+                    `${formatMoney(
+                        immediate
+                    )} is immediately available`
+                );
+            }
+
+            if (
+                personalVaultValue >
+                0
+            ) {
+                accessibleDetails.push(
+                    `${formatMoney(
+                        personalVaultValue
+                    )} is self-accessible through your Personal Vault`
+                );
+            }
+
+            if (
                 factionValue >
                 0
             ) {
                 accessibleDetails.push(
                     `${formatMoney(
                         factionValue
-                    )} is available through your faction vault after a banker transfer`
+                    )} is available through your Faction Vault after a banker transfer`
                 );
             }
 
@@ -1453,18 +1511,7 @@
                 accessibleDetails.push(
                     `${formatMoney(
                         caymanValue
-                    )} is available through Cayman`
-                );
-            }
-
-            if (
-                immediate >
-                0
-            ) {
-                accessibleDetails.push(
-                    `${formatMoney(
-                        immediate
-                    )} is immediately available`
+                    )} is available through Cayman after travel`
                 );
             }
 
@@ -1514,6 +1561,12 @@
                     metadata: {
                         immediate,
 
+                        selfAccessible,
+
+                        requestDependent,
+
+                        travelDependent,
+
                         conditional,
 
                         accessible,
@@ -1521,6 +1574,9 @@
                         locked,
 
                         totalKnown,
+
+                        personalVault:
+                            personalVaultValue,
 
                         factionVault:
                             factionValue,
@@ -1544,6 +1600,107 @@
             conditional >
                 0
         ) {
+            const accessDetails =
+                [];
+
+            if (
+                selfAccessible >
+                0
+            ) {
+                accessDetails.push(
+                    `${formatMoney(
+                        selfAccessible
+                    )} can be retrieved directly from your Personal Vault`
+                );
+            }
+
+            if (
+                requestDependent >
+                0
+            ) {
+                accessDetails.push(
+                    `${formatMoney(
+                        requestDependent
+                    )} requires a faction banker transfer`
+                );
+            }
+
+            if (
+                travelDependent >
+                0
+            ) {
+                accessDetails.push(
+                    `${formatMoney(
+                        travelDependent
+                    )} requires travel before it can be accessed`
+                );
+            }
+
+            const accessMessage =
+                accessDetails.length >
+                0
+                    ? accessDetails.join(
+                        ". "
+                    )
+                    : `${formatMoney(
+                        conditional
+                    )} is spendable but requires an access step before use`;
+
+            recommendations.push(
+                createRecommendation({
+                    priority:
+                        PRIORITIES.LOW,
+
+                    category:
+                        CATEGORIES
+                            .LIQUIDITY,
+
+                    title:
+                        "Spendable funds require access first",
+
+                    message:
+                        `${accessMessage}.`,
+
+                    reason:
+                        "TACTIC detected spendable non-wallet liquidity, but no immediately available cash.",
+
+                    action:
+                        createAction(
+                            ACTION_TYPES
+                                .OPEN_FINANCE_TAB,
+                            "overview",
+                            "Review Funding Sources"
+                        ),
+
+                    metadata: {
+                        immediate,
+
+                        selfAccessible,
+
+                        requestDependent,
+
+                        travelDependent,
+
+                        conditional,
+
+                        accessible,
+
+                        locked,
+
+                        totalKnown,
+
+                        personalVault:
+                            personalVaultValue,
+
+                        factionVault:
+                            factionValue,
+
+                        cayman:
+                            caymanValue,
+                    },
+                })
+            );
+        }
             recommendations.push(
                 createRecommendation({
                     priority:
@@ -1707,6 +1864,24 @@
                     context
                         .liquidity
                         ?.immediate ??
+                    null,
+
+                selfAccessibleLiquidity:
+                    context
+                        .liquidity
+                        ?.selfAccessible ??
+                    null,
+
+                requestDependentLiquidity:
+                    context
+                        .liquidity
+                        ?.requestDependent ??
+                    null,
+
+                travelDependentLiquidity:
+                    context
+                        .liquidity
+                        ?.travelDependent ??
                     null,
 
                 conditionalLiquidity:
@@ -1995,6 +2170,9 @@
                     true,
 
                 unifiedLiquidity:
+                    true,
+
+                selfAccessibleFunds:
                     true,
 
                 requestDependentFunds:
