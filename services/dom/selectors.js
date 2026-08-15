@@ -135,6 +135,15 @@
                  */
                 WALLET:
                     "#user-money",
+
+                /*
+                 * Verified global Cayman Islands offshore-bank indicator.
+                 *
+                 * Torn exposes the current Cayman balance through the
+                 * aria-label on the globally available Cayman icon/link.
+                 */
+                CAYMAN:
+                    'a[aria-label^="Offshore Bank Account:"]',
             },
 
             FACTION: {
@@ -339,6 +348,45 @@
 
                 dataKey:
                     "wallet",
+            },
+        },
+
+        {
+            key:
+                "USER.CAYMAN",
+
+            selector:
+                SELECTORS
+                    .USER
+                    .CAYMAN,
+
+            description:
+                "The current player's globally displayed Cayman Islands offshore-bank balance.",
+
+            pageId:
+                "global",
+
+            required:
+                false,
+
+            verified:
+                true,
+
+            visible:
+                true,
+
+            metadata: {
+                category:
+                    "user",
+
+                repository:
+                    "finance",
+
+                dataKey:
+                    "cayman",
+
+                role:
+                    "balance-display",
             },
         },
 
