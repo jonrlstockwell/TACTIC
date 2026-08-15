@@ -1701,6 +1701,7 @@
                 })
             );
         }
+    }
 
     function sortRecommendations(
         recommendations
