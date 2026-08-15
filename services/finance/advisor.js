@@ -124,6 +124,9 @@
             LIQUIDITY:
                 "liquidity",
 
+            FUNDING_STRATEGY:
+                "funding-strategy",
+
             FINANCIAL_STATUS:
                 "financial-status",
         });
@@ -447,6 +450,15 @@
                     ? cloneValue(
                           input.liquidity
                       )
+                    : null,
+
+            affordability:
+                input.affordability &&
+                typeof input.affordability ===
+                    "object"
+                    ? cloneValue(
+                        input.affordability
+                    )
                     : null,
 
             preferences: {
@@ -1268,6 +1280,443 @@
         );
     }
 
+    function describeFundingStep(
+        step
+    ) {
+        if (
+            !step ||
+            !Number.isFinite(
+                step.amount
+            )
+        ) {
+            return null;
+        }
+
+        const amount =
+            formatMoney(
+                step.amount
+            );
+
+        switch (
+            step.availability
+        ) {
+            case "immediate":
+                return `${amount} from ${step.label || "Wallet"}`;
+
+            case "self-accessible":
+                return `${amount} from ${step.label || "Personal Vault"} by withdrawing it directly`;
+
+            case "request-dependent":
+                return `${amount} from ${step.label || "Faction Vault"} after a banker transfer`;
+
+            case "travel-dependent":
+                return `${amount} from ${step.label || "Cayman"} after travel`;
+
+            default:
+                return `${amount} from ${step.label || step.sourceId || "another funding source"}`;
+        }
+    }
+
+    function getFundingFriction(
+        availability
+    ) {
+        switch (
+            availability
+        ) {
+            case "immediate":
+                return {
+                    level:
+                        0,
+
+                    label:
+                        "none",
+                };
+
+            case "self-accessible":
+                return {
+                    level:
+                        1,
+
+                    label:
+                        "low",
+                };
+
+            case "request-dependent":
+                return {
+                    level:
+                        2,
+
+                    label:
+                        "moderate",
+                };
+
+            case "travel-dependent":
+                return {
+                    level:
+                        3,
+
+                    label:
+                        "high",
+                };
+
+            default:
+                return {
+                    level:
+                        4,
+
+                    label:
+                        "unknown",
+                };
+        }
+    }
+
+    function evaluateFundingStrategy(
+        context,
+        recommendations
+    ) {
+        const affordability =
+            context.affordability;
+
+        if (
+            !affordability ||
+            typeof affordability !==
+                "object" ||
+            !Number.isFinite(
+                affordability.required
+            )
+        ) {
+            return;
+        }
+
+        const required =
+            affordability.required;
+
+        const fundingPlan =
+            Array.isArray(
+                affordability.fundingPlan
+            )
+                ? affordability.fundingPlan
+                : [];
+
+        const unfunded =
+            Number.isFinite(
+                affordability.unfunded
+            )
+                ? affordability.unfunded
+                : required;
+
+        /*
+         * The purchase cannot be funded from actionable liquidity.
+         */
+        if (
+            affordability.affordable !==
+                true
+        ) {
+            recommendations.push(
+                createRecommendation({
+                    priority:
+                        PRIORITIES.HIGH,
+
+                    category:
+                        CATEGORIES
+                            .FUNDING_STRATEGY,
+
+                    title:
+                        "Purchase exceeds accessible funds",
+
+                    message:
+                        `${formatMoney(
+                            required
+                        )} is required, but ${formatMoney(
+                            unfunded
+                        )} remains unfunded after all currently accessible sources are considered.`,
+
+                    reason:
+                        "Tracked wealth may exist, but the Finance Engine could not construct a complete funding plan from actionable liquidity.",
+
+                    action:
+                        createAction(
+                            ACTION_TYPES
+                                .OPEN_FINANCE_TAB,
+                            "overview",
+                            "Review Funding Sources"
+                        ),
+
+                    metadata: {
+                        required,
+
+                        affordable:
+                            false,
+
+                        status:
+                            affordability.status,
+
+                        unfunded,
+
+                        fundingPlan:
+                            cloneValue(
+                                fundingPlan
+                            ),
+
+                        liquidity:
+                            cloneValue(
+                                affordability
+                                    .liquidity ||
+                                null
+                            ),
+                    },
+                })
+            );
+
+            return;
+        }
+
+        /*
+         * Affordable entirely from immediately available funds.
+         */
+        if (
+            affordability.requiresAction !==
+                true
+        ) {
+            recommendations.push(
+                createRecommendation({
+                    priority:
+                        PRIORITIES
+                            .INFORMATIONAL,
+
+                    category:
+                        CATEGORIES
+                            .FUNDING_STRATEGY,
+
+                    title:
+                        "Purchase is immediately fundable",
+
+                    message:
+                        `${formatMoney(
+                            required
+                        )} can be funded entirely from immediately available money.`,
+
+                    reason:
+                        "The Finance Engine found sufficient immediate liquidity without requiring transfers, withdrawals, or travel.",
+
+                    action:
+                        createAction(
+                            ACTION_TYPES
+                                .OPEN_FINANCE_TAB,
+                            "overview",
+                            "Review Funding Plan"
+                        ),
+
+                    metadata: {
+                        required,
+
+                        affordable:
+                            true,
+
+                        status:
+                            affordability.status,
+
+                        requiresAction:
+                            false,
+
+                        fundingPlan:
+                            cloneValue(
+                                fundingPlan
+                            ),
+                    },
+                })
+            );
+
+            return;
+        }
+
+        const steps =
+            fundingPlan
+                .map(
+                    step => {
+                        const friction =
+                            getFundingFriction(
+                                step.availability
+                            );
+
+                        return {
+                            sourceId:
+                                step.sourceId,
+
+                            label:
+                                step.label,
+
+                            amount:
+                                step.amount,
+
+                            availability:
+                                step.availability,
+
+                            requiresAction:
+                                step.requiresAction ===
+                                true,
+
+                            action:
+                                cloneValue(
+                                    step.action ||
+                                    null
+                                ),
+
+                            description:
+                                describeFundingStep(
+                                    step
+                                ),
+
+                            friction:
+                                friction.label,
+
+                            frictionLevel:
+                                friction.level,
+                        };
+                    }
+                )
+                .filter(
+                    step =>
+                        step.description
+                );
+
+        const highestFriction =
+            steps.reduce(
+                (
+                    highest,
+                    step
+                ) =>
+                    step.frictionLevel >
+                    highest.frictionLevel
+                        ? step
+                        : highest,
+                {
+                    frictionLevel:
+                        -1,
+
+                    friction:
+                        "none",
+                }
+            );
+
+        const usesCayman =
+            steps.some(
+                step =>
+                    step.availability ===
+                    "travel-dependent"
+            );
+
+        const usesFactionVault =
+            steps.some(
+                step =>
+                    step.availability ===
+                    "request-dependent"
+            );
+
+        const usesPersonalVault =
+            steps.some(
+                step =>
+                    step.availability ===
+                    "self-accessible"
+            );
+
+        const stepMessage =
+            steps
+                .map(
+                    (
+                        step,
+                        index
+                    ) =>
+                        `${index + 1}. ${step.description}`
+                )
+                .join(
+                    "; "
+                );
+
+        let priority =
+            PRIORITIES.LOW;
+
+        if (usesCayman) {
+            priority =
+                PRIORITIES.MEDIUM;
+        }
+
+        recommendations.push(
+            createRecommendation({
+                priority,
+
+                category:
+                    CATEGORIES
+                        .FUNDING_STRATEGY,
+
+                title:
+                    usesCayman
+                        ? "Purchase requires high-friction funding"
+                        : "Purchase is conditionally fundable",
+
+                message:
+                    `${formatMoney(
+                        required
+                    )} is affordable, but funding must be assembled first. ${stepMessage}.`,
+
+                reason:
+                    usesCayman
+                        ? "The funding plan requires travel-dependent Cayman funds, increasing time and exposure before the purchase can be completed."
+                        : "The purchase is covered by accessible funds, but one or more sources require a withdrawal or transfer before spending.",
+
+                action:
+                    createAction(
+                        ACTION_TYPES
+                            .OPEN_FINANCE_TAB,
+                        "overview",
+                        "Review Funding Plan"
+                    ),
+
+                metadata: {
+                    required,
+
+                    affordable:
+                        true,
+
+                    status:
+                        affordability.status,
+
+                    requiresAction:
+                        true,
+
+                    immediateShortfall:
+                        affordability
+                            .immediateShortfall ??
+                        null,
+
+                    accessibleShortfall:
+                        affordability
+                            .accessibleShortfall ??
+                        null,
+
+                    unfunded,
+
+                    highestFriction:
+                        highestFriction
+                            .friction,
+
+                    usesPersonalVault,
+
+                    usesFactionVault,
+
+                    usesCayman,
+
+                    steps,
+
+                    fundingPlan:
+                        cloneValue(
+                            fundingPlan
+                        ),
+                },
+            })
+        );
+    }
+
     function evaluateLiquidity(
         context,
         recommendations
@@ -1818,6 +2267,29 @@
                         context.liquidity
                     ),
 
+                affordabilityAvailable:
+                    Boolean(
+                        context.affordability
+                    ),
+
+                affordabilityStatus:
+                    context
+                        .affordability
+                        ?.status ||
+                    null,
+
+                affordabilityRequired:
+                    context
+                        .affordability
+                        ?.required ??
+                    null,
+
+                affordabilityRequiresAction:
+                    context
+                        .affordability
+                        ?.requiresAction ===
+                    true,
+
                 immediateLiquidity:
                     context
                         .liquidity
@@ -1940,6 +2412,11 @@
                     recommendations
                 );
             }
+
+            evaluateFundingStrategy(
+                context,
+                recommendations
+            );
 
             evaluateLiquidity(
                 context,
@@ -2140,6 +2617,26 @@
                     true,
 
                 travelDependentFunds:
+                    true,
+            },
+
+            fundingStrategySupport: {
+                affordabilityInput:
+                    true,
+
+                orderedFundingPlan:
+                    true,
+
+                selfAccessibleFunds:
+                    true,
+
+                requestDependentFunds:
+                    true,
+
+                travelDependentFunds:
+                    true,
+
+                frictionClassification:
                     true,
             },
 
