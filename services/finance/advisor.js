@@ -1701,49 +1701,6 @@
                 })
             );
         }
-            recommendations.push(
-                createRecommendation({
-                    priority:
-                        PRIORITIES.LOW,
-
-                    category:
-                        CATEGORIES
-                            .LIQUIDITY,
-
-                    title:
-                        "Spendable funds require access first",
-
-                    message:
-                        `${formatMoney(
-                            conditional
-                        )} is spendable, but currently requires an additional access step before it can be used.`,
-
-                    reason:
-                        "TACTIC detected spendable conditional liquidity but no immediately available cash.",
-
-                    action:
-                        createAction(
-                            ACTION_TYPES
-                                .OPEN_FINANCE_TAB,
-                            "overview",
-                            "Review Funding Sources"
-                        ),
-
-                    metadata: {
-                        immediate,
-
-                        conditional,
-
-                        accessible,
-
-                        locked,
-
-                        totalKnown,
-                    },
-                })
-            );
-        }
-    }
 
     function sortRecommendations(
         recommendations
