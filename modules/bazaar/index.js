@@ -217,8 +217,27 @@
 
         const sectionContainer =
             document.createElement(
-                "div"
+                "section"
             );
+
+        sectionContainer.className =
+            [
+                "tactic-application-section",
+                "tactic-bazaar-section",
+                `tactic-bazaar-section-${primarySection.id}`,
+            ].join(
+                " "
+            );
+
+        sectionContainer.setAttribute(
+            "data-tactic-application",
+            MODULE_ID
+        );
+
+        sectionContainer.setAttribute(
+            "data-tactic-section",
+            primarySection.id
+        );
 
         wrapper.appendChild(
             sectionContainer
@@ -228,10 +247,26 @@
             wrapper
         );
 
-        await primarySection.render(
-            sectionContainer
+        return sectionManager.renderSection(
+            primarySection.id,
+            sectionContainer,
+            {
+                rootContainer:
+                    container,
+
+                application:
+                    MODULE_ID,
+
+                bazaarHelper:
+                    TACTIC.services
+                        ?.dom
+                        ?.pages
+                        ?.getHelper?.(
+                            "bazaar-listing"
+                        ) ||
+                    null,
+            }
         );
-    }
 
     const bazaarApi =
         Object.freeze({

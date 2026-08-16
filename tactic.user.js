@@ -205,7 +205,7 @@
 // Bazaar application shell. Individual Bazaar sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/index.js?v=3
 //
 //
 // ============================================================
