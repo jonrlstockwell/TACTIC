@@ -20,13 +20,17 @@
         TACTIC.services
             ?.logger;
 
-    const bazaarPage =
-        TACTIC.services
-            ?.dom
-            ?.pages
-            ?.getHelper?.(
-                "bazaar-listing"
-            );
+    function getBazaarPage() {
+        return (
+            TACTIC.services
+                ?.dom
+                ?.pages
+                ?.getHelper?.(
+                    "bazaar-listing"
+                ) ||
+            null
+        );
+    }
 
     const MODULE_ID =
         "bazaar";
@@ -125,9 +129,13 @@
     }
 
     function getSnapshot() {
+        const bazaarPage =
+            getBazaarPage();
+
         if (
-            !bazaarPage
-                ?.getListingSnapshot
+            typeof bazaarPage
+                ?.getListingSnapshot !==
+            "function"
         ) {
             return [];
         }
@@ -515,6 +523,24 @@
     }
 
     function applySelected() {
+        const bazaarPage =
+            getBazaarPage();
+
+        if (
+            !bazaarPage ||
+            typeof bazaarPage
+                .setQuantity !==
+                "function" ||
+            typeof bazaarPage
+                .applyDiscountToRow !==
+                "function"
+        ) {
+            logger?.error(
+                "Bazaar listing DOM helper is unavailable."
+            );
+
+            return [];
+        }
         const selected =
             getSelectedEntries();
 
@@ -1166,7 +1192,7 @@
 
                 bazaarHelperAvailable:
                     Boolean(
-                        bazaarPage
+                        getBazaarPage()
                     ),
             };
         },
