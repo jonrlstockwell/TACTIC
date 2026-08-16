@@ -151,8 +151,12 @@
     async function render(
         container
     ) {
-        if (!container) {
-            return;
+        if (
+            !(container instanceof Element)
+        ) {
+            throw new TypeError(
+                "Bazaar requires a valid render container."
+            );
         }
 
         const sections =
@@ -203,14 +207,25 @@
                 wrapper
             );
 
-            return;
+            return {
+                success:
+                    true,
+
+                rendered:
+                    true,
+
+                empty:
+                    true,
+            };
         }
 
         /*
-         * V1 has one section: Listing Helper.
+         * V1 has one section:
+         * Listing Helper.
          *
-         * Once Bazaar gains multiple sections we can add the same
-         * tabbed-navigation pattern used by Finance.
+         * If Bazaar gains additional sections later,
+         * this can evolve into the same tabbed-navigation
+         * pattern used by Finance.
          */
         const primarySection =
             sections[0];
@@ -267,6 +282,7 @@
                     null,
             }
         );
+    }
 
     const bazaarApi =
         Object.freeze({
@@ -381,6 +397,22 @@
             destroyedAt =
                 Date.now();
 
+            health?.markDisabled?.(
+                "module:bazaar",
+                {
+                    message:
+                        "Bazaar application is stopped.",
+
+                    metadata: {
+                        moduleId:
+                            MODULE_ID,
+
+                        initialized:
+                            false,
+                    },
+                }
+            );
+
             logger?.info(
                 "Bazaar application destroyed"
             );
@@ -395,6 +427,9 @@
 
             version:
                 MODULE_VERSION,
+
+            sectionManagerId:
+                SECTION_MANAGER_ID,
         }
     );
 })();
