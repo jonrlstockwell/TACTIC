@@ -2571,12 +2571,11 @@
         }
     }
 
-    function getPrimaryRecommendation(
-        input
-    ) {
-        return evaluate(
-            input
-        ).primary;
+    function getPrimaryRecommendation() {
+        return cloneValue(
+            metrics
+                .lastPrimaryRecommendation
+        );
     }
 
     function inspect() {
