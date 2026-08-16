@@ -205,7 +205,7 @@
 // Bazaar application shell. Individual Bazaar sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/index.js?v=2
 //
 //
 // ============================================================
@@ -213,7 +213,7 @@
 // Must load after the Bazaar application shell.
 // ============================================================
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/listing.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/listing.js?v=2
 //
 //
 // ============================================================

@@ -16,10 +16,6 @@
         TACTIC.services
             ?.components;
 
-    const sectionManager =
-        TACTIC.services
-            ?.sectionManager;
-
     const logger =
         TACTIC.services
             ?.logger;
@@ -553,52 +549,30 @@
             }
 
             try {
-                let result;
+                const quantityWritten =
+                    bazaarPage.setQuantity(
+                        item.source.row,
+                        entry.quantity
+                    );
 
-                if (
-                    typeof bazaarPage
-                        ?.prepareListing ===
-                    "function"
-                ) {
-                    result =
-                        bazaarPage
-                            .prepareListing(
-                                item
-                                    .source,
-                                {
-                                    discountPercent:
-                                        state
-                                            .discountPercent,
+                const priceResult =
+                    bazaarPage.applyDiscountToRow(
+                        item.source.row,
+                        state.discountPercent
+                    );
 
-                                    quantity:
-                                        entry
-                                            .quantity,
-                                }
-                            );
-                } else if (
-                    typeof bazaarPage
-                        ?.applyDiscount ===
-                    "function"
-                ) {
-                    result =
-                        bazaarPage
-                            .applyDiscount(
-                                item
-                                    .source,
-                                state
-                                    .discountPercent,
-                                entry
-                                    .quantity
-                            );
-                } else {
-                    result = {
-                        applied:
-                            false,
+                const result = {
+                    applied:
+                        quantityWritten ===
+                            true &&
+                        priceResult
+                            ?.applied ===
+                            true,
 
-                        reason:
-                            "bazaar-write-method-unavailable",
-                    };
-                }
+                    quantityWritten,
+
+                    priceResult,
+                };
 
                 results.push({
                     name:
@@ -1137,11 +1111,14 @@
         moduleId:
             MODULE_ID,
 
-        title:
+        name:
             "Listing Helper",
 
-        label:
-            "Listing Helper",
+        icon:
+            "🏷️",
+
+        enabled:
+            true,
 
         order:
             10,
@@ -1195,11 +1172,9 @@
         },
     };
 
-    sectionManager
-        ?.register?.(
-            MODULE_ID,
-            listingSection
-        );
+    TACTIC.bazaar.registerSection(
+        listingSection
+    );
 
     TACTIC.modules =
         TACTIC.modules ||
