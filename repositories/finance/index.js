@@ -5968,21 +5968,57 @@
                 null;
         }
 
-        const helper =
-            getPersonalVaultHelper();
+        const personalVaultRoot =
+            document.querySelector(
+                PERSONAL_VAULT_ROOT_SELECTOR
+            );
 
-        const balanceElement =
-            helper
-                ?.getBalanceElement?.() ||
-            null;
-
-        if (!balanceElement) {
+        if (!personalVaultRoot) {
             refreshPersonalVault(
-                "personal-vault-watcher-element-unavailable"
+                "personal-vault-watcher-root-unavailable"
             );
 
             return false;
         }
+
+        personalVaultMutationObserver =
+            new MutationObserver(
+                () => {
+                    schedulePersonalVaultRefresh(
+                        "personal-vault-dom-mutation"
+                    );
+                }
+            );
+
+        personalVaultMutationObserver.observe(
+            personalVaultRoot,
+            {
+                childList:
+                    true,
+
+                subtree:
+                    true,
+
+                characterData:
+                    true,
+
+                attributes:
+                    true,
+
+                attributeFilter: [
+                    "class",
+                    "disabled",
+                    "value",
+                ],
+            }
+        );
+
+        refreshPersonalVault(
+            "personal-vault-watcher-initial"
+        );
+
+        return true;
+    }
 
         personalVaultMutationObserver =
             new MutationObserver(
