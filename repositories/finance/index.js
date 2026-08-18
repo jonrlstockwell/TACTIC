@@ -6020,44 +6020,6 @@
         return true;
     }
 
-        personalVaultMutationObserver =
-            new MutationObserver(
-                () => {
-                    schedulePersonalVaultRefresh(
-                        "personal-vault-dom-mutation"
-                    );
-                }
-            );
-
-        personalVaultMutationObserver.observe(
-            balanceElement,
-            {
-                childList:
-                    true,
-
-                subtree:
-                    true,
-
-                characterData:
-                    true,
-
-                attributes:
-                    true,
-
-                attributeFilter: [
-                    "value",
-                    "class",
-                ],
-            }
-        );
-
-        refreshPersonalVault(
-            "personal-vault-watcher-initial"
-        );
-
-        return true;
-    }
-
     async function startCaymanWatcher() {
         const helper =
             getCaymanHelper();
