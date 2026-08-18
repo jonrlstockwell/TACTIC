@@ -619,6 +619,12 @@
     let personalVaultMutationObserver =
         null;
 
+    let personalVaultDiscoveryObserver =
+        null;
+
+    let personalVaultObservedRoot =
+        null;
+
     let personalVaultRefreshTimerId =
         null;
 
@@ -5958,6 +5964,44 @@
     }
 
     function startPersonalVaultWatcher() {
+        const personalVaultRoot =
+            document.querySelector(
+                PERSONAL_VAULT_ROOT_SELECTOR
+            );
+
+        if (!personalVaultDiscoveryObserver) {
+            personalVaultDiscoveryObserver =
+                new MutationObserver(
+                    () => {
+                        const currentRoot =
+                            document.querySelector(
+                                PERSONAL_VAULT_ROOT_SELECTOR
+                            );
+
+                        if (
+                            currentRoot !==
+                            personalVaultObservedRoot
+                        ) {
+                            startPersonalVaultWatcher();
+                        }
+                    }
+                );
+
+            if (document.body) {
+                personalVaultDiscoveryObserver
+                    .observe(
+                        document.body,
+                        {
+                            childList:
+                                true,
+
+                            subtree:
+                                true,
+                        }
+                    );
+            }
+        }
+
         if (
             personalVaultMutationObserver
         ) {
@@ -5968,17 +6012,18 @@
                 null;
         }
 
-        const personalVaultRoot =
-            document.querySelector(
-                PERSONAL_VAULT_ROOT_SELECTOR
-            );
+        personalVaultObservedRoot =
+            personalVaultRoot ||
+            null;
 
         if (!personalVaultRoot) {
             refreshPersonalVault(
                 "personal-vault-watcher-root-unavailable"
             );
 
-            return false;
+            return Boolean(
+                personalVaultDiscoveryObserver
+            );
         }
 
         personalVaultMutationObserver =
@@ -6365,6 +6410,19 @@
             personalVaultMutationObserver =
                 null;
         }
+
+        if (
+            personalVaultDiscoveryObserver
+        ) {
+            personalVaultDiscoveryObserver
+                .disconnect();
+
+            personalVaultDiscoveryObserver =
+                null;
+        }
+
+        personalVaultObservedRoot =
+            null;
 
         if (
             bankRefreshTimerId !==
@@ -6832,6 +6890,18 @@
                     active:
                         Boolean(
                             personalVaultMutationObserver
+                        ),
+
+                    discoveryActive:
+                        Boolean(
+                            personalVaultDiscoveryObserver
+                        ),
+
+                    rootPresent:
+                        Boolean(
+                            document.querySelector(
+                                PERSONAL_VAULT_ROOT_SELECTOR
+                            )
                         ),
 
                     balancePresent:
