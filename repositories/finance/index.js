@@ -5651,9 +5651,34 @@
                             options.refresh ===
                             true,
                     });
-            } else {
+            } else if (
+                normalizedKey ===
+                DATA_KEYS
+                    .FACTION_VAULT
+            ) {
                 value =
                     getFactionVault({
+                        refresh:
+                            options.refresh ===
+                            true,
+                    });
+            } else if (
+                normalizedKey ===
+                DATA_KEYS
+                    .PERSONAL_VAULT
+            ) {
+                value =
+                    getPersonalVault({
+                        refresh:
+                            options.refresh ===
+                            true,
+                    });
+            } else if (
+                normalizedKey ===
+                DATA_KEYS.CAYMAN
+            ) {
+                value =
+                    getCayman({
                         refresh:
                             options.refresh ===
                             true,
