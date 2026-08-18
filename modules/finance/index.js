@@ -139,6 +139,11 @@
     const financeAdvisor =
         services.financeAdvisor;
 
+    const financeRepository =
+        TACTIC.repositories
+            ?.finance ||
+        null;
+
     if (!drawer) {
         console.error(
             "[TACTIC Finance] Drawer service is unavailable."
@@ -182,6 +187,9 @@
         readStoredTab();
 
     const removeEventListeners =
+        [];
+
+    const removeRepositoryListeners =
         [];
 
     const metrics = {
@@ -2772,6 +2780,34 @@
         return true;
     }
 
+    function handleFinanceRepositoryUpdate(
+        payload
+    ) {
+        const dataKey =
+            payload?.key ||
+            "unknown";
+
+        logger?.debug(
+            "Finance repository update received",
+            {
+                key:
+                    dataKey,
+
+                reason:
+                    payload?.reason ||
+                    null,
+
+                timestamp:
+                    payload?.timestamp ||
+                    null,
+            }
+        );
+
+        scheduleRefresh(
+            `finance-repository:${dataKey}`
+        );
+    }
+
     function isFinanceSectionEvent(
         payload
     ) {
@@ -3067,6 +3103,61 @@
                 }
             }
 
+            if (
+                financeRepository &&
+                typeof financeRepository
+                    .subscribe ===
+                    "function"
+            ) {
+                const financeDataKeys = [
+                    financeRepository
+                        .keys
+                        ?.WALLET ||
+                        "wallet",
+
+                    financeRepository
+                        .keys
+                        ?.INVESTMENT_BANK ||
+                        "investmentBank",
+
+                    financeRepository
+                        .keys
+                        ?.FACTION_VAULT ||
+                        "factionVault",
+
+                    financeRepository
+                        .keys
+                        ?.PERSONAL_VAULT ||
+                        "personalVault",
+                ];
+
+                for (
+                    const dataKey of
+                    financeDataKeys
+                ) {
+                    const unsubscribe =
+                        financeRepository
+                            .subscribe(
+                                dataKey,
+                                payload => {
+                                    handleFinanceRepositoryUpdate(
+                                        payload
+                                    );
+                                }
+                            );
+
+                    if (
+                        typeof unsubscribe ===
+                        "function"
+                    ) {
+                        removeRepositoryListeners
+                            .push(
+                                unsubscribe
+                            );
+                    }
+                }
+            }
+
             health?.register({
                 name:
                     "module:finance",
@@ -3166,6 +3257,23 @@
                     "function"
                 ) {
                     removeListener();
+                }
+            }
+
+            while (
+                removeRepositoryListeners
+                    .length >
+                0
+            ) {
+                const unsubscribe =
+                    removeRepositoryListeners
+                        .pop();
+
+                if (
+                    typeof unsubscribe ===
+                    "function"
+                ) {
+                    unsubscribe();
                 }
             }
 
