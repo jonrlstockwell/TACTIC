@@ -164,7 +164,7 @@
         "#tab\\=armoury\\&sub\\=donate";
 
     const PERSONAL_VAULT_ROOT_SELECTOR =
-        ".properties-wrap";
+        "#properties-page-wrap";
 
     const BANK_CACHE_STORAGE_KEY =
         "finance:investment-bank-cache";
