@@ -321,6 +321,38 @@
         );
     }
 
+    function getBalanceStatusElement() {
+        const candidates =
+            document.querySelectorAll(
+                ".vault-wrap .title, .vault-wrap p"
+            );
+
+        for (
+            const element of candidates
+        ) {
+            const text =
+                String(
+                    element.textContent ||
+                    ""
+                )
+                    .replace(
+                        /\s+/g,
+                        " "
+                    )
+                    .trim();
+
+            if (
+                /^There is \$[\d,]+ stored in the vault\.$/i.test(
+                    text
+                )
+            ) {
+                return element;
+            }
+        }
+
+        return null;
+    }
+
     function normalizeText(
         value
     ) {
@@ -376,8 +408,27 @@
         metrics.lastBalanceReadAt =
             Date.now();
 
-        const element =
+        let element =
             getBalanceElement();
+
+        let source =
+            "personal-vault-balance";
+
+        let selector =
+            getSelector(
+                SELECTOR_KEYS.BALANCE
+            );
+
+        if (!element) {
+            element =
+                getBalanceStatusElement();
+
+            source =
+                "personal-vault-status-text";
+
+            selector =
+                ".vault-wrap .title, .vault-wrap p";
+        }
 
         if (!element) {
             metrics.balanceReadFailures +=
@@ -407,10 +458,29 @@
                 element.textContent
             );
 
-        const value =
-            parseMoney(
-                raw
-            );
+        let value;
+
+        if (
+            source ===
+            "personal-vault-status-text"
+        ) {
+            const match =
+                raw.match(
+                    /^There is \$([\d,]+) stored in the vault\.$/i
+                );
+
+            value =
+                match
+                    ? parseMoney(
+                        match[1]
+                    )
+                    : null;
+        } else {
+            value =
+                parseMoney(
+                    raw
+                );
+        }
 
         if (
             !Number.isSafeInteger(
@@ -451,6 +521,7 @@
             "balance-read",
             {
                 value,
+                source,
             }
         );
 
@@ -465,13 +536,9 @@
 
             raw,
 
-            source:
-                "personal-vault-balance",
+            source,
 
-            selector:
-                getSelector(
-                    SELECTOR_KEYS.BALANCE
-                ),
+            selector,
 
             readAt:
                 metrics
