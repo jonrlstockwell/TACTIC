@@ -6004,6 +6004,14 @@
 
                 characterData:
                     true,
+
+                attributes:
+                    true,
+
+                attributeFilter: [
+                    "value",
+                    "class",
+                ],
             }
         );
 
