@@ -331,6 +331,252 @@
             .tactic-primary-button:hover {
                 background: #3a3a3a;
             }
+
+            /* ============================================================
+                Bazaar Listing Helper
+               ============================================================ */
+
+            .tactic-bazaar-content {
+                min-width: 0;
+            }
+
+            .tactic-bazaar-listing {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                min-width: 0;
+            }
+
+            .tactic-bazaar-header {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .tactic-bazaar-title {
+                font-size: 15px;
+                font-weight: 700;
+            }
+
+            .tactic-bazaar-description {
+                font-size: 11px;
+                line-height: 1.4;
+                opacity: 0.72;
+            }
+
+            .tactic-bazaar-controls {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 9px;
+                border: 1px solid rgba(128, 128, 128, 0.22);
+                border-radius: 7px;
+            }
+
+            .tactic-bazaar-control-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .tactic-bazaar-control-label {
+                min-width: 0;
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            .tactic-bazaar-discount-input-wrap {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                flex: 0 0 auto;
+            }
+
+            .tactic-bazaar-discount-input {
+                width: 58px;
+                min-width: 0;
+                box-sizing: border-box;
+            }
+
+            .tactic-bazaar-percent-symbol {
+                font-size: 11px;
+                opacity: 0.75;
+            }
+
+            .tactic-bazaar-max-toggle {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                font-size: 11px;
+                user-select: none;
+            }
+
+            .tactic-bazaar-max-toggle input {
+                margin: 0;
+                flex: 0 0 auto;
+            }
+
+            .tactic-bazaar-toolbar {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 5px;
+            }
+
+            .tactic-bazaar-toolbar-button {
+                width: 100%;
+                min-width: 0;
+                padding-left: 5px;
+                padding-right: 5px;
+                white-space: normal;
+                line-height: 1.2;
+            }
+
+            .tactic-bazaar-inventory-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 2px;
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                opacity: 0.7;
+            }
+
+            .tactic-bazaar-item-list {
+                display: flex;
+                flex-direction: column;
+                gap: 7px;
+                max-height: 430px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding-right: 3px;
+            }
+
+            .tactic-bazaar-item {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 9px;
+                min-width: 0;
+                border: 1px solid rgba(128, 128, 128, 0.22);
+                border-radius: 7px;
+                box-sizing: border-box;
+            }
+
+            .tactic-bazaar-item.is-selected {
+                border-color: rgba(128, 128, 128, 0.55);
+            }
+
+            .tactic-bazaar-item.is-disabled {
+                opacity: 0.62;
+            }
+
+            .tactic-bazaar-item-header {
+                display: flex;
+                align-items: flex-start;
+                gap: 7px;
+                min-width: 0;
+            }
+
+            .tactic-bazaar-item-checkbox {
+                flex: 0 0 auto;
+                margin: 2px 0 0;
+            }
+
+            .tactic-bazaar-item-name {
+                min-width: 0;
+                flex: 1 1 auto;
+                font-size: 12px;
+                font-weight: 700;
+                line-height: 1.3;
+                overflow-wrap: anywhere;
+            }
+
+            .tactic-bazaar-item-values {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 5px;
+                min-width: 0;
+            }
+
+            .tactic-bazaar-metric {
+                min-width: 0;
+            }
+
+            .tactic-bazaar-metric-label {
+                margin-bottom: 2px;
+                font-size: 9px;
+                line-height: 1.2;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                opacity: 0.62;
+            }
+
+            .tactic-bazaar-metric-value {
+                min-width: 0;
+                font-size: 11px;
+                font-weight: 700;
+                line-height: 1.25;
+                overflow-wrap: anywhere;
+            }
+
+            .tactic-bazaar-item-warning {
+                font-size: 10px;
+                line-height: 1.3;
+                opacity: 0.7;
+            }
+
+            .tactic-bazaar-quantity-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .tactic-bazaar-quantity-label {
+                font-size: 10px;
+                font-weight: 600;
+            }
+
+            .tactic-bazaar-quantity-input {
+                width: 68px;
+                min-width: 0;
+                box-sizing: border-box;
+            }
+
+            .tactic-bazaar-footer {
+                position: sticky;
+                bottom: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 7px;
+                padding: 9px;
+                border: 1px solid rgba(128, 128, 128, 0.28);
+                border-radius: 7px;
+                backdrop-filter: blur(8px);
+                z-index: 2;
+            }
+
+            .tactic-bazaar-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 7px 10px;
+            }
+
+            .tactic-bazaar-discount-summary {
+                font-size: 10px;
+                line-height: 1.3;
+                opacity: 0.72;
+            }
+
+            .tactic-bazaar-prepare-button {
+                width: 100%;
+                min-width: 0;
+                font-weight: 700;
+            }
         `;
 
         document.head.appendChild(

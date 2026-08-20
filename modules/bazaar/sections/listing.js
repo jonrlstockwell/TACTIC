@@ -45,6 +45,9 @@
         discountPercent:
             DEFAULT_DISCOUNT_PERCENT,
 
+        useMaxQuantity:
+            false,
+
         items:
             [],
 
@@ -59,7 +62,9 @@
         value
     ) {
         const numeric =
-            Number(value);
+            Number(
+                value
+            );
 
         if (
             !Number.isFinite(
@@ -120,11 +125,11 @@
 
         return Math.floor(
             value *
-                (
-                    1 -
-                    boundedDiscount /
-                        100
-                )
+            (
+                1 -
+                boundedDiscount /
+                    100
+            )
         );
     }
 
@@ -231,6 +236,40 @@
         };
     }
 
+    function clampQuantity(
+        item,
+        quantity
+    ) {
+        if (!item) {
+            return 1;
+        }
+
+        return Math.min(
+            item.ownedQuantity,
+            Math.max(
+                1,
+                Math.floor(
+                    Number(
+                        quantity
+                    ) ||
+                    1
+                )
+            )
+        );
+    }
+
+    function getDefaultQuantity(
+        item
+    ) {
+        if (!item) {
+            return 1;
+        }
+
+        return state.useMaxQuantity
+            ? item.ownedQuantity
+            : 1;
+    }
+
     function refreshItems() {
         state.items =
             getSnapshot()
@@ -241,7 +280,7 @@
                     item =>
                         item
                             .ownedQuantity >
-                            0
+                        0
                 );
 
         state.lastRefreshAt =
@@ -268,21 +307,247 @@
             }
 
             selection.quantity =
-                Math.min(
-                    item
-                        .ownedQuantity,
-                    Math.max(
-                        1,
-                        Number(
-                            selection
-                                .quantity
-                        ) ||
-                            1
-                    )
-                );
+                state.useMaxQuantity
+                    ? item.ownedQuantity
+                    : clampQuantity(
+                          item,
+                          selection.quantity
+                      );
         }
 
         return state.items;
+    }
+
+    function getSelection(
+        index
+    ) {
+        return (
+            state.selected
+                .get(
+                    index
+                ) ||
+            null
+        );
+    }
+
+    function isSelected(
+        index
+    ) {
+        return Boolean(
+            getSelection(
+                index
+            )
+                ?.selected
+        );
+    }
+
+    function getDisplayedQuantity(
+        item,
+        index
+    ) {
+        const selection =
+            getSelection(
+                index
+            );
+
+        if (
+            selection
+                ?.selected
+        ) {
+            return clampQuantity(
+                item,
+                selection.quantity
+            );
+        }
+
+        return getDefaultQuantity(
+            item
+        );
+    }
+
+    function setSelected(
+        index,
+        selected
+    ) {
+        const item =
+            state.items[
+                index
+            ];
+
+        if (!item) {
+            return;
+        }
+
+        if (!selected) {
+            state.selected
+                .delete(
+                    index
+                );
+
+            return;
+        }
+
+        const existing =
+            state.selected
+                .get(
+                    index
+                );
+
+        const quantity =
+            state.useMaxQuantity
+                ? item
+                    .ownedQuantity
+                : clampQuantity(
+                      item,
+                      existing
+                          ?.quantity ??
+                      1
+                  );
+
+        state.selected.set(
+            index,
+            {
+                selected:
+                    true,
+
+                quantity,
+            }
+        );
+    }
+
+    function setQuantity(
+        index,
+        quantity
+    ) {
+        const item =
+            state.items[
+                index
+            ];
+
+        if (!item) {
+            return;
+        }
+
+        const normalized =
+            clampQuantity(
+                item,
+                quantity
+            );
+
+        const existing =
+            state.selected
+                .get(
+                    index
+                ) || {
+                    selected:
+                        true,
+                };
+
+        state.selected.set(
+            index,
+            {
+                ...existing,
+
+                selected:
+                    true,
+
+                quantity:
+                    normalized,
+            }
+        );
+    }
+
+    function setUseMaxQuantity(
+        enabled
+    ) {
+        state.useMaxQuantity =
+            enabled ===
+            true;
+
+        if (
+            !state.useMaxQuantity
+        ) {
+            return;
+        }
+
+        for (
+            const [
+                index,
+                selection,
+            ] of state.selected
+        ) {
+            const item =
+                state.items[
+                    index
+                ];
+
+            if (
+                !item ||
+                !selection
+                    ?.selected
+            ) {
+                continue;
+            }
+
+            selection.quantity =
+                item
+                    .ownedQuantity;
+        }
+    }
+
+    function setSelectedToMax() {
+        for (
+            const [
+                index,
+                selection,
+            ] of state.selected
+        ) {
+            const item =
+                state.items[
+                    index
+                ];
+
+            if (
+                !item ||
+                !selection
+                    ?.selected
+            ) {
+                continue;
+            }
+
+            selection.quantity =
+                item
+                    .ownedQuantity;
+        }
+    }
+
+    function selectAll() {
+        state.items
+            .forEach(
+                (
+                    item,
+                    index
+                ) => {
+                    if (
+                        !item
+                            .priceable ||
+                        !item
+                            .verified
+                    ) {
+                        return;
+                    }
+
+                    setSelected(
+                        index,
+                        true
+                    );
+                }
+            );
+    }
+
+    function clearSelection() {
+        state.selected
+            .clear();
     }
 
     function getSelectedEntries() {
@@ -309,17 +574,9 @@
             }
 
             const quantity =
-                Math.min(
-                    item
-                        .ownedQuantity,
-                    Math.max(
-                        1,
-                        Number(
-                            selection
-                                .quantity
-                        ) ||
-                            1
-                    )
+                clampQuantity(
+                    item,
+                    selection.quantity
                 );
 
             const listingPrice =
@@ -394,134 +651,6 @@
         };
     }
 
-    function setSelected(
-        index,
-        selected
-    ) {
-        const item =
-            state.items[
-                index
-            ];
-
-        if (!item) {
-            return;
-        }
-
-        if (!selected) {
-            state.selected
-                .delete(
-                    index
-                );
-
-            return;
-        }
-
-        const existing =
-            state.selected
-                .get(
-                    index
-                );
-
-        state.selected.set(
-            index,
-            {
-                selected:
-                    true,
-
-                quantity:
-                    Math.min(
-                        item
-                            .ownedQuantity,
-                        Math.max(
-                            1,
-                            existing
-                                ?.quantity ??
-                                item
-                                    .ownedQuantity
-                        )
-                    ),
-            }
-        );
-    }
-
-    function setQuantity(
-        index,
-        quantity
-    ) {
-        const item =
-            state.items[
-                index
-            ];
-
-        if (!item) {
-            return;
-        }
-
-        const normalized =
-            Math.min(
-                item
-                    .ownedQuantity,
-                Math.max(
-                    1,
-                    Number(
-                        quantity
-                    ) ||
-                        1
-                )
-            );
-
-        const existing =
-            state.selected
-                .get(
-                    index
-                ) || {
-                    selected:
-                        true,
-                };
-
-        state.selected.set(
-            index,
-            {
-                ...existing,
-
-                selected:
-                    true,
-
-                quantity:
-                    normalized,
-            }
-        );
-    }
-
-    function selectAll() {
-        state.items
-            .forEach(
-                (
-                    item,
-                    index
-                ) => {
-                    if (
-                        !item
-                            .priceable ||
-                        !item
-                            .verified
-                    ) {
-                        return;
-                    }
-
-                    setSelected(
-                        index,
-                        true
-                    );
-                }
-            );
-    }
-
-    function clearSelection() {
-        state.selected
-            .clear();
-    }
-
     function applySelected() {
         const bazaarPage =
             getBazaarPage();
@@ -541,6 +670,7 @@
 
             return [];
         }
+
         const selected =
             getSelectedEntries();
 
@@ -576,29 +706,24 @@
 
             try {
                 const quantityWritten =
-                    bazaarPage.setQuantity(
-                        item.source.row,
-                        entry.quantity
-                    );
+                    bazaarPage
+                        .setQuantity(
+                            item
+                                .source
+                                .row,
+                            entry
+                                .quantity
+                        );
 
                 const priceResult =
-                    bazaarPage.applyDiscountToRow(
-                        item.source.row,
-                        state.discountPercent
-                    );
-
-                const result = {
-                    applied:
-                        quantityWritten ===
-                            true &&
-                        priceResult
-                            ?.applied ===
-                            true,
-
-                    quantityWritten,
-
-                    priceResult,
-                };
+                    bazaarPage
+                        .applyDiscountToRow(
+                            item
+                                .source
+                                .row,
+                            state
+                                .discountPercent
+                        );
 
                 results.push({
                     name:
@@ -611,7 +736,16 @@
                         entry
                             .listingPrice,
 
-                    result,
+                    applied:
+                        quantityWritten ===
+                            true &&
+                        priceResult
+                            ?.applied ===
+                            true,
+
+                    quantityWritten,
+
+                    priceResult,
                 });
             } catch (error) {
                 logger?.error(
@@ -640,6 +774,65 @@
         }
 
         return results;
+    }
+
+    function createMetric(
+        label,
+        value
+    ) {
+        const metric =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-metric",
+                    }
+                );
+
+        metric.append(
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-metric-label",
+
+                        text:
+                            label,
+                    }
+                ),
+
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-metric-value",
+
+                        text:
+                            value,
+                    }
+                )
+        );
+
+        return metric;
+    }
+
+    function createToolbarButton(
+        text,
+        onClick
+    ) {
+        return components
+            .createButton(
+                text,
+                {
+                    className:
+                        "tactic-bazaar-toolbar-button",
+
+                    onClick,
+                }
+            );
     }
 
     function render(
@@ -675,7 +868,7 @@
                     "div",
                     {
                         className:
-                            "tactic-section-header",
+                            "tactic-bazaar-header",
                     }
                 );
 
@@ -685,7 +878,7 @@
                     "div",
                     {
                         className:
-                            "tactic-section-title",
+                            "tactic-bazaar-title",
 
                         text:
                             "Bazaar Listing Helper",
@@ -697,10 +890,10 @@
                     "div",
                     {
                         className:
-                            "tactic-section-description",
+                            "tactic-bazaar-description",
 
                         text:
-                            "Prepare Bazaar quantities and prices using current market value.",
+                            "Prepare quantities and listing prices from current market value.",
                     }
                 )
         );
@@ -719,13 +912,36 @@
                     }
                 );
 
+        const discountRow =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-control-row",
+                    }
+                );
+
         const discountLabel =
             components
                 .createElement(
                     "label",
                     {
+                        className:
+                            "tactic-bazaar-control-label",
+
                         text:
                             "Discount from Market Value",
+                    }
+                );
+
+        const discountInputWrap =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-discount-input-wrap",
                     }
                 );
 
@@ -734,6 +950,9 @@
                 .createElement(
                     "input",
                     {
+                        className:
+                            "tactic-bazaar-discount-input",
+
                         attributes: {
                             type:
                                 "number",
@@ -783,55 +1002,144 @@
                 }
             );
 
-        discountLabel.append(
+        discountInputWrap.append(
             discountInput,
-            document.createTextNode(
-                "%"
+
+            components
+                .createElement(
+                    "span",
+                    {
+                        className:
+                            "tactic-bazaar-percent-symbol",
+
+                        text:
+                            "%",
+                    }
+                )
+        );
+
+        discountRow.append(
+            discountLabel,
+            discountInputWrap
+        );
+
+        controls.appendChild(
+            discountRow
+        );
+
+        const maxToggleLabel =
+            components
+                .createElement(
+                    "label",
+                    {
+                        className:
+                            "tactic-bazaar-max-toggle",
+                    }
+                );
+
+        const maxToggle =
+            components
+                .createElement(
+                    "input",
+                    {
+                        attributes: {
+                            type:
+                                "checkbox",
+                        },
+                    }
+                );
+
+        maxToggle.checked =
+            state.useMaxQuantity;
+
+        maxToggle
+            .addEventListener(
+                "change",
+                () => {
+                    setUseMaxQuantity(
+                        maxToggle
+                            .checked
+                    );
+
+                    render(
+                        container
+                    );
+                }
+            );
+
+        maxToggleLabel.append(
+            maxToggle,
+
+            components
+                .createElement(
+                    "span",
+                    {
+                        text:
+                            "Use max owned quantity",
+                    }
+                )
+        );
+
+        controls.appendChild(
+            maxToggleLabel
+        );
+
+        const toolbar =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-toolbar",
+                    }
+                );
+
+        toolbar.append(
+            createToolbarButton(
+                "Select All",
+                () => {
+                    selectAll();
+
+                    render(
+                        container
+                    );
+                }
+            ),
+
+            createToolbarButton(
+                "Clear",
+                () => {
+                    clearSelection();
+
+                    render(
+                        container
+                    );
+                }
+            ),
+
+            createToolbarButton(
+                "Set Selected to Max",
+                () => {
+                    setSelectedToMax();
+
+                    render(
+                        container
+                    );
+                }
+            ),
+
+            createToolbarButton(
+                "Refresh",
+                () => {
+                    render(
+                        container
+                    );
+                }
             )
         );
 
-        controls.append(
-            discountLabel,
-
-            components
-                .createButton(
-                    "Select All",
-                    {
-                        onClick() {
-                            selectAll();
-
-                            render(
-                                container
-                            );
-                        },
-                    }
-                ),
-
-            components
-                .createButton(
-                    "Clear Selection",
-                    {
-                        onClick() {
-                            clearSelection();
-
-                            render(
-                                container
-                            );
-                        },
-                    }
-                ),
-
-            components
-                .createButton(
-                    "Refresh",
-                    {
-                        onClick() {
-                            render(
-                                container
-                            );
-                        },
-                    }
-                )
+        controls.appendChild(
+            toolbar
         );
 
         root.appendChild(
@@ -857,6 +1165,43 @@
             return;
         }
 
+        const inventoryHeader =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-inventory-header",
+                    }
+                );
+
+        inventoryHeader.append(
+            components
+                .createElement(
+                    "span",
+                    {
+                        text:
+                            "Items",
+                    }
+                ),
+
+            components
+                .createElement(
+                    "span",
+                    {
+                        text:
+                            String(
+                                state.items
+                                    .length
+                            ),
+                    }
+                )
+        );
+
+        root.appendChild(
+            inventoryHeader
+        );
+
         const list =
             components
                 .createElement(
@@ -873,16 +1218,9 @@
                     item,
                     index
                 ) => {
-                    const selection =
-                        state.selected
-                            .get(
-                                index
-                            );
-
                     const selected =
-                        Boolean(
-                            selection
-                                ?.selected
+                        isSelected(
+                            index
                         );
 
                     const listingPrice =
@@ -891,13 +1229,43 @@
                                 .marketValue
                         );
 
-                    const row =
+                    const available =
+                        item
+                            .priceable &&
+                        item
+                            .verified;
+
+                    const card =
                         components
                             .createElement(
                                 "div",
                                 {
                                     className:
-                                        "tactic-bazaar-item",
+                                        [
+                                            "tactic-bazaar-item",
+                                            selected
+                                                ? "is-selected"
+                                                : "",
+                                            !available
+                                                ? "is-disabled"
+                                                : "",
+                                        ]
+                                            .filter(
+                                                Boolean
+                                            )
+                                            .join(
+                                                " "
+                                            ),
+                                }
+                            );
+
+                    const itemHeader =
+                        components
+                            .createElement(
+                                "div",
+                                {
+                                    className:
+                                        "tactic-bazaar-item-header",
                                 }
                             );
 
@@ -906,6 +1274,9 @@
                             .createElement(
                                 "input",
                                 {
+                                    className:
+                                        "tactic-bazaar-item-checkbox",
+
                                     attributes: {
                                         type:
                                             "checkbox",
@@ -917,10 +1288,7 @@
                         selected;
 
                     checkbox.disabled =
-                        !item
-                            .priceable ||
-                        !item
-                            .verified;
+                        !available;
 
                     checkbox
                         .addEventListener(
@@ -938,17 +1306,7 @@
                             }
                         );
 
-                    const details =
-                        components
-                            .createElement(
-                                "div",
-                                {
-                                    className:
-                                        "tactic-bazaar-item-details",
-                                }
-                            );
-
-                    details.append(
+                    const itemName =
                         components
                             .createElement(
                                 "div",
@@ -960,26 +1318,104 @@
                                         item
                                             .name,
                                 }
-                            ),
+                            );
 
+                    itemHeader.append(
+                        checkbox,
+                        itemName
+                    );
+
+                    card.appendChild(
+                        itemHeader
+                    );
+
+                    const values =
                         components
                             .createElement(
                                 "div",
                                 {
                                     className:
                                         "tactic-bazaar-item-values",
+                                }
+                            );
+
+                    values.append(
+                        createMetric(
+                            "Owned",
+                            item
+                                .ownedQuantity
+                        ),
+
+                        createMetric(
+                            "Market",
+                            formatMoney(
+                                item
+                                    .marketValue
+                            )
+                        ),
+
+                        createMetric(
+                            "List",
+                            formatMoney(
+                                listingPrice
+                            )
+                        )
+                    );
+
+                    card.appendChild(
+                        values
+                    );
+
+                    if (!available) {
+                        const warning =
+                            components
+                                .createElement(
+                                    "div",
+                                    {
+                                        className:
+                                            "tactic-bazaar-item-warning",
+
+                                        text:
+                                            "Current market value is unavailable.",
+                                    }
+                                );
+
+                        card.appendChild(
+                            warning
+                        );
+                    }
+
+                    const quantityRow =
+                        components
+                            .createElement(
+                                "div",
+                                {
+                                    className:
+                                        "tactic-bazaar-quantity-row",
+                                }
+                            );
+
+                    const quantityLabel =
+                        components
+                            .createElement(
+                                "label",
+                                {
+                                    className:
+                                        "tactic-bazaar-quantity-label",
 
                                     text:
-                                        `Owned: ${item.ownedQuantity} · Market: ${formatMoney(item.marketValue)} · List: ${formatMoney(listingPrice)}`,
+                                        "Quantity",
                                 }
-                            )
-                    );
+                            );
 
                     const quantityInput =
                         components
                             .createElement(
                                 "input",
                                 {
+                                    className:
+                                        "tactic-bazaar-quantity-input",
+
                                     attributes: {
                                         type:
                                             "number",
@@ -995,10 +1431,10 @@
 
                                         value:
                                             String(
-                                                selection
-                                                    ?.quantity ??
-                                                item
-                                                    .ownedQuantity
+                                                getDisplayedQuantity(
+                                                    item,
+                                                    index
+                                                )
                                             ),
                                     },
                                 }
@@ -1023,14 +1459,17 @@
                             }
                         );
 
-                    row.append(
-                        checkbox,
-                        details,
+                    quantityRow.append(
+                        quantityLabel,
                         quantityInput
                     );
 
+                    card.appendChild(
+                        quantityRow
+                    );
+
                     list.appendChild(
-                        row
+                        card
                     );
                 }
             );
@@ -1042,52 +1481,75 @@
         const summary =
             createSummary();
 
-        const summaryWrapper =
+        const footer =
             components
                 .createElement(
                     "div",
                     {
                         className:
-                            "tactic-bazaar-summary",
+                            "tactic-bazaar-footer",
                     }
                 );
 
-        summaryWrapper.append(
+        const summaryGrid =
             components
-                .createInfoCard(
-                    "Selected Items",
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-summary-grid",
+                    }
+                );
+
+        summaryGrid.append(
+            createMetric(
+                "Selected",
+                summary
+                    .itemCount
+            ),
+
+            createMetric(
+                "Quantity",
+                summary
+                    .quantity
+            ),
+
+            createMetric(
+                "Market",
+                formatMoney(
                     summary
-                        .itemCount
-                ),
-
-            components
-                .createInfoCard(
-                    "Total Quantity",
-                    summary
-                        .quantity
-                ),
-
-            components
-                .createInfoCard(
-                    "Market Value",
-                    formatMoney(
-                        summary
-                            .marketValue
-                    )
-                ),
-
-            components
-                .createInfoCard(
-                    "Listing Value",
-                    formatMoney(
-                        summary
-                            .listingValue
-                    )
+                        .marketValue
                 )
+            ),
+
+            createMetric(
+                "Listing",
+                formatMoney(
+                    summary
+                        .listingValue
+                )
+            )
         );
 
-        root.appendChild(
-            summaryWrapper
+        footer.appendChild(
+            summaryGrid
+        );
+
+        const discountSummary =
+            components
+                .createElement(
+                    "div",
+                    {
+                        className:
+                            "tactic-bazaar-discount-summary",
+
+                        text:
+                            `${state.discountPercent}% below market · ${formatMoney(summary.discountValue)} discount`,
+                    }
+                );
+
+        footer.appendChild(
+            discountSummary
         );
 
         const prepareButton =
@@ -1095,6 +1557,9 @@
                 .createButton(
                     "Prepare Selected Listings",
                     {
+                        className:
+                            "tactic-bazaar-prepare-button",
+
                         onClick() {
                             const results =
                                 applySelected();
@@ -1121,8 +1586,12 @@
             summary.itemCount ===
             0;
 
-        root.appendChild(
+        footer.appendChild(
             prepareButton
+        );
+
+        root.appendChild(
+            footer
         );
 
         container.appendChild(
@@ -1160,6 +1629,10 @@
 
         clearSelection,
 
+        setSelectedToMax,
+
+        setUseMaxQuantity,
+
         applySelected,
 
         inspect() {
@@ -1173,6 +1646,10 @@
                 discountPercent:
                     state
                         .discountPercent,
+
+                useMaxQuantity:
+                    state
+                        .useMaxQuantity,
 
                 itemCount:
                     state
