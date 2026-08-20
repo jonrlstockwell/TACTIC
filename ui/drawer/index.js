@@ -406,7 +406,36 @@
 
             .tactic-tool-primary-button {
                 width: 100%;
+                min-height: 36px;
+                padding: 8px 12px;
+
+                border: 1px solid rgba(110, 180, 255, 0.45);
+                border-radius: 6px;
+
+                background: rgba(70, 130, 190, 0.18);
+                color: #8ecbff;
+
+                font-size: 11px;
                 font-weight: 700;
+                line-height: 1.2;
+                text-align: center;
+
+                cursor: pointer;
+                box-sizing: border-box;
+            }
+
+            .tactic-tool-primary-button:hover:not(:disabled) {
+                background: rgba(70, 130, 190, 0.28);
+                border-color: rgba(110, 180, 255, 0.7);
+            }
+
+            .tactic-tool-primary-button:active:not(:disabled) {
+                background: rgba(70, 130, 190, 0.36);
+            }
+
+            .tactic-tool-primary-button:disabled {
+                opacity: 0.4;
+                cursor: default;
             }
 
             .tactic-tool-result {
