@@ -213,7 +213,7 @@
 // Must load after the Bazaar application shell.
 // ============================================================
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=2
 //
 //
 // ============================================================

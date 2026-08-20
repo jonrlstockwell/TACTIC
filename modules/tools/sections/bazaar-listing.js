@@ -50,6 +50,15 @@
 
         autoApplied:
             false,
+
+        liveRefreshTimerId:
+            null,
+
+        mountedContainer:
+            null,
+
+        lastPageSignature:
+            null,
     };
 
     function getBazaarPage() {
@@ -92,6 +101,125 @@
 
             return [];
         }
+    }
+
+    function getPageSignature() {
+        const snapshot =
+            getSnapshot();
+
+        const detectedCount =
+            snapshot.length;
+
+        const eligibleCount =
+            snapshot.filter(
+                item =>
+                    item
+                        ?.priceable ===
+                        true &&
+                    (
+                        item
+                            ?.marketValue
+                            ?.verified ===
+                            true ||
+                        item
+                            ?.verified ===
+                            true
+                    )
+            ).length;
+
+        return {
+            detectedCount,
+
+            eligibleCount,
+
+            signature:
+                `${detectedCount}:${eligibleCount}`,
+        };
+    }
+
+    function stopLiveRefresh() {
+        if (
+            state.liveRefreshTimerId !==
+            null
+        ) {
+            globalThis.clearInterval(
+                state.liveRefreshTimerId
+            );
+
+            state.liveRefreshTimerId =
+                null;
+        }
+
+        state.mountedContainer =
+            null;
+    }
+
+    function startLiveRefresh(
+        container
+    ) {
+        state.mountedContainer =
+            container;
+
+        if (
+            state.liveRefreshTimerId !==
+            null
+        ) {
+            return;
+        }
+
+        state.liveRefreshTimerId =
+            globalThis.setInterval(
+                () => {
+                    const mountedContainer =
+                        state
+                            .mountedContainer;
+
+                    if (
+                        !mountedContainer ||
+                        !mountedContainer
+                            .isConnected
+                    ) {
+                        stopLiveRefresh();
+
+                        return;
+                    }
+
+                    const pageState =
+                        getPageSignature();
+
+                    /*
+                     * Leaving the Bazaar resets automatic preparation.
+                     * When Bazaar appears again, it can prepare the newly
+                     * mounted Torn inputs once.
+                     */
+                    if (
+                        pageState
+                            .detectedCount ===
+                        0
+                    ) {
+                        state.autoApplied =
+                            false;
+                    }
+
+                    if (
+                        pageState
+                            .signature ===
+                        state
+                            .lastPageSignature
+                    ) {
+                        return;
+                    }
+
+                    state.lastPageSignature =
+                        pageState
+                            .signature;
+
+                    render(
+                        mountedContainer
+                    );
+                },
+                1000
+            );
     }
 
     function normalizeDiscount(
@@ -318,6 +446,10 @@
             return;
         }
 
+        startLiveRefresh(
+            container
+        );
+
         components
             .clearElement(
                 container
@@ -345,6 +477,17 @@
                             true
                     )
             ).length;
+
+        state.lastPageSignature =
+            `${state.detectedCount}:${state.eligibleCount}`;
+
+        if (
+            state.detectedCount ===
+            0
+        ) {
+            state.autoApplied =
+                false;
+        }
 
         const root =
             components
@@ -557,7 +700,7 @@
                                 "tactic-tool-result",
 
                             text:
-                                `${state.appliedCount} prices updated${
+                                `Last update: ${state.appliedCount} prices updated${
                                     state.failedCount > 0
                                         ? ` · ${state.failedCount} failed`
                                         : ""
@@ -658,6 +801,13 @@
                     Boolean(
                         getBazaarPage()
                     ),
+                
+                liveRefreshActive:
+                    state.liveRefreshTimerId !==
+                    null,
+
+                lastPageSignature:
+                    state.lastPageSignature,
             };
         },
     };
