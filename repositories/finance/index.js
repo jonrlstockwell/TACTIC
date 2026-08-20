@@ -613,6 +613,12 @@
     let factionVaultMutationObserver =
         null;
 
+    let factionVaultDiscoveryObserver =
+        null;
+
+    let factionVaultObservedRoot =
+        null;
+
     let factionVaultRefreshTimerId =
         null;
 
@@ -5901,6 +5907,44 @@
     }
 
     function startFactionVaultWatcher() {
+        const factionRoot =
+            document.querySelector(
+                FACTION_VAULT_ROOT_SELECTOR
+            );
+
+        if (!factionVaultDiscoveryObserver) {
+            factionVaultDiscoveryObserver =
+                new MutationObserver(
+                    () => {
+                        const currentRoot =
+                            document.querySelector(
+                                FACTION_VAULT_ROOT_SELECTOR
+                            );
+
+                        if (
+                            currentRoot !==
+                            factionVaultObservedRoot
+                        ) {
+                            startFactionVaultWatcher();
+                        }
+                    }
+                );
+
+            if (document.body) {
+                factionVaultDiscoveryObserver
+                    .observe(
+                        document.body,
+                        {
+                            childList:
+                                true,
+
+                            subtree:
+                                true,
+                        }
+                    );
+            }
+        }
+
         if (
             factionVaultMutationObserver
         ) {
@@ -5911,17 +5955,18 @@
                 null;
         }
 
-        const factionRoot =
-            document.querySelector(
-                FACTION_VAULT_ROOT_SELECTOR
-            );
+        factionVaultObservedRoot =
+            factionRoot ||
+            null;
 
         if (!factionRoot) {
             refreshFactionVault(
                 "faction-vault-watcher-root-unavailable"
             );
 
-            return false;
+            return Boolean(
+                factionVaultDiscoveryObserver
+            );
         }
 
         factionVaultMutationObserver =
@@ -6402,6 +6447,19 @@
         }
 
         if (
+            factionVaultDiscoveryObserver
+        ) {
+            factionVaultDiscoveryObserver
+                .disconnect();
+
+            factionVaultDiscoveryObserver =
+                null;
+        }
+
+factionVaultObservedRoot =
+    null;
+
+        if (
             personalVaultMutationObserver
         ) {
             personalVaultMutationObserver
@@ -6878,12 +6936,23 @@
                             factionVaultMutationObserver
                         ),
 
+                    discoveryActive:
+                        Boolean(
+                            factionVaultDiscoveryObserver
+                        ),
+
                     rootPresent:
                         Boolean(
                             document.querySelector(
                                 FACTION_VAULT_ROOT_SELECTOR
                             )
                         ),
+
+                    ready:
+                        getFactionVaultHelper()
+                            ?.isReady?.()
+                            ?.ready ===
+                        true,
                 },
 
                 personalVault: {
