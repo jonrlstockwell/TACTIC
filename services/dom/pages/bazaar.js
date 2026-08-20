@@ -70,6 +70,9 @@
      */
     const SELECTORS =
         Object.freeze({
+            /*
+             * Standard Add to Bazaar page.
+             */
             ROW:
                 'li[data-group="child"]',
 
@@ -93,6 +96,27 @@
 
             SUBMIT_BUTTON:
                 'input[type="submit"][value="ADD TO BAZAAR"]',
+
+            /*
+             * Manage Bazaar page.
+             *
+             * Item containers expose a stable data-testid beginning
+             * with "item-".
+             */
+            MANAGE_ROOT:
+                "#bazaarRoot",
+
+            MANAGE_ROW:
+                '[data-testid^="item-"][aria-label]',
+
+            MANAGE_PRICE_INPUT:
+                'input.input-money[data-input-money-visible="true"]:not([type="hidden"])',
+
+            MANAGE_HIDDEN_PRICE_INPUT:
+                'input.input-money[type="hidden"]',
+
+            MANAGE_SAVE_BUTTON:
+                'button[type="submit"]',
         });
 
     const metrics = {
@@ -179,10 +203,7 @@
             : null;
     }
 
-    function getRows() {
-        metrics.rowReads +=
-            1;
-
+    function getListingRows() {
         return Array.from(
             document.querySelectorAll(
                 SELECTORS.ROW
@@ -190,11 +211,127 @@
         );
     }
 
+    function getManageRows() {
+        const root =
+            document.querySelector(
+                SELECTORS.MANAGE_ROOT
+            );
+
+        if (!root) {
+            return [];
+        }
+
+        /*
+         * Torn may contain nested/repeated item-* elements.
+         * Only keep containers that actually own an editable
+         * visible price field.
+         */
+        const candidates =
+            Array.from(
+                root.querySelectorAll(
+                    SELECTORS.MANAGE_ROW
+                )
+            );
+
+        return candidates.filter(
+            row => {
+                const priceInput =
+                    row.querySelector(
+                        SELECTORS.MANAGE_PRICE_INPUT
+                    );
+
+                if (!priceInput) {
+                    return false;
+                }
+
+                /*
+                 * Avoid returning a parent item container when
+                 * another item-* container owns the same input.
+                 */
+                const nearestItem =
+                    priceInput.closest(
+                        '[data-testid^="item-"][aria-label]'
+                    );
+
+                return nearestItem ===
+                    row;
+            }
+        );
+    }
+
+    function getPageMode() {
+        if (
+            getListingRows().length >
+            0
+        ) {
+            return "listing";
+        }
+
+        if (
+            getManageRows().length >
+            0
+        ) {
+            return "manage";
+        }
+
+        return "unknown";
+    }
+
+    function getRows() {
+        metrics.rowReads +=
+            1;
+
+        const mode =
+            getPageMode();
+
+        if (
+            mode ===
+            "manage"
+        ) {
+            return getManageRows();
+        }
+
+        if (
+            mode ===
+            "listing"
+        ) {
+            return getListingRows();
+        }
+
+        return [];
+    }
+
     function getItemName(
         row
     ) {
+        if (!row) {
+            return null;
+        }
+
+        if (
+            getPageMode() ===
+            "manage"
+        ) {
+            return (
+                normalizeText(
+                    row.getAttribute(
+                        "aria-label"
+                    )
+                ) ||
+                normalizeText(
+                    row.dataset
+                        ?.testid
+                        ?.replace(
+                            /^item-/,
+                            ""
+                        )
+                ) ||
+                null
+            );
+        }
+
         return normalizeText(
-            row?.querySelector?.(
+            row.querySelector(
                 SELECTORS.ITEM_NAME
             )?.textContent
         ) || null;
@@ -203,6 +340,13 @@
     function getOwnedQuantity(
         row
     ) {
+        if (
+            getPageMode() ===
+            "manage"
+        ) {
+            return null;
+        }
+
         return parseInteger(
             row?.querySelector?.(
                 SELECTORS.OWNED_QUANTITY
@@ -213,6 +357,102 @@
     function getMarketValue(
         row
     ) {
+        const mode =
+            getPageMode();
+
+        if (
+            mode ===
+            "manage"
+        ) {
+            /*
+             * On Manage Bazaar, Torn exposes the pricing
+             * reference in the item's RRP column.
+             *
+             * Find the money value outside the editable
+             * Price (PU) input area.
+             */
+            const priceInput =
+                row?.querySelector?.(
+                    SELECTORS.MANAGE_PRICE_INPUT
+                );
+
+            const moneyElements =
+                Array.from(
+                    row?.querySelectorAll?.(
+                        "div, span"
+                    ) || []
+                );
+
+            let element =
+                null;
+
+            for (
+                const candidate of
+                moneyElements
+            ) {
+                const text =
+                    normalizeText(
+                        candidate.textContent
+                    );
+
+                if (
+                    !/^\$[\d,]+$/.test(
+                        text
+                    )
+                ) {
+                    continue;
+                }
+
+                if (
+                    priceInput &&
+                    candidate.contains(
+                        priceInput
+                    )
+                ) {
+                    continue;
+                }
+
+                element =
+                    candidate;
+
+                break;
+            }
+
+            const raw =
+                normalizeText(
+                    element?.textContent
+                );
+
+            const value =
+                parseMoney(
+                    raw
+                );
+
+            return {
+                available:
+                    Number.isSafeInteger(
+                        value
+                    ),
+
+                verified:
+                    Number.isSafeInteger(
+                        value
+                    ),
+
+                value:
+                    Number.isSafeInteger(
+                        value
+                    )
+                        ? value
+                        : null,
+
+                raw,
+
+                source:
+                    "torn-manage-bazaar-reference-value",
+            };
+        }
+
         const element =
             row?.querySelector?.(
                 SELECTORS.MARKET_VALUE
@@ -256,6 +496,13 @@
     function getQuantityInput(
         row
     ) {
+        if (
+            getPageMode() ===
+            "manage"
+        ) {
+            return null;
+        }
+
         return (
             row?.querySelector?.(
                 SELECTORS.QUANTITY_INPUT
@@ -267,9 +514,17 @@
     function getPriceInput(
         row
     ) {
+        const selector =
+            getPageMode() ===
+            "manage"
+                ? SELECTORS
+                    .MANAGE_PRICE_INPUT
+                : SELECTORS
+                    .PRICE_INPUT;
+
         return (
             row?.querySelector?.(
-                SELECTORS.PRICE_INPUT
+                selector
             ) ||
             null
         );
@@ -278,9 +533,17 @@
     function getHiddenPriceInput(
         row
     ) {
+        const selector =
+            getPageMode() ===
+            "manage"
+                ? SELECTORS
+                    .MANAGE_HIDDEN_PRICE_INPUT
+                : SELECTORS
+                    .HIDDEN_PRICE_INPUT;
+
         return (
             row?.querySelector?.(
-                SELECTORS.HIDDEN_PRICE_INPUT
+                selector
             ) ||
             null
         );
@@ -763,11 +1026,8 @@
 
     function isCurrent() {
         return (
-            Boolean(
-                getSubmitButton()
-            ) &&
-            getRows().length >
-                0
+            getPageMode() !==
+            "unknown"
         );
     }
 
@@ -778,6 +1038,9 @@
         return {
             helperId:
                 HELPER_ID,
+
+            pageMode:
+                getPageMode(),
 
             current:
                 isCurrent(),
@@ -915,6 +1178,10 @@
             isCurrent,
             isReady,
 
+            getPageMode,
+
+            getListingRows,
+            getManageRows,
             getRows,
 
             getItemName,
