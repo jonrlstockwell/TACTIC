@@ -827,7 +827,7 @@
                 item.rowId
             ) {
                 element.dataset.entryId =
-                    String(
+                    toBase36(
                         item.rowId
                     );
             }
