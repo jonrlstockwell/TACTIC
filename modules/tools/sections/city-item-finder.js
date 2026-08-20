@@ -271,6 +271,100 @@
             : null;
     }
 
+    function toBase36(
+        value
+    ) {
+        const numeric =
+            Number(
+                value
+            );
+
+        if (
+            !Number.isFinite(
+                numeric
+            )
+        ) {
+            return "";
+        }
+
+        return Math.floor(
+            numeric
+        ).toString(
+            36
+        );
+    }
+
+    function buildPickupToken(
+        item
+    ) {
+        const raw =
+            item?.raw ||
+            item;
+
+        const coordinates =
+            raw?.coordinates;
+
+        const x =
+            Array.isArray(
+                coordinates
+            )
+                ? Number(
+                    coordinates[0]
+                )
+                : Number(
+                    item?.x
+                );
+
+        const y =
+            Array.isArray(
+                coordinates
+            )
+                ? Number(
+                    coordinates[1]
+                )
+                : Number(
+                    item?.y
+                );
+
+        const rowId =
+            Number(
+                raw?.row_id ??
+                item?.rowId
+            );
+
+        const timestamp =
+            Number(
+                raw?.timestamp
+            );
+
+        if (
+            !Number.isFinite(x) ||
+            !Number.isFinite(y) ||
+            !Number.isFinite(rowId) ||
+            !Number.isFinite(timestamp)
+        ) {
+            return null;
+        }
+
+        const payload =
+            [
+                toBase36(x),
+                toBase36(y),
+                toBase36(rowId),
+                toBase36(timestamp),
+            ].join(
+                "O"
+            );
+
+        try {
+            return globalThis.btoa(
+                payload
+            );
+        } catch {
+            return null;
+        }
+    }
+
     function parseItem(
         raw
     ) {
@@ -725,24 +819,21 @@
                 item.rowId
             ) {
                 element.dataset.entryId =
-                    item.rowId;
+                    String(
+                        item.rowId
+                    );
             }
 
-            /*
-             * Some Torn model versions expose the encoded pickup
-             * token directly. Preserve it when available.
-             */
-            const td =
-                item.raw
-                    ?.td;
+            const pickupToken =
+                buildPickupToken(
+                    item
+                );
 
             if (
-                typeof td ===
-                "string" &&
-                td
+                pickupToken
             ) {
                 element.dataset.td =
-                    td;
+                    pickupToken;
             }
 
             element.title =
