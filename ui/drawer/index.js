@@ -636,6 +636,105 @@
             }
 
             /* ============================================================
+               City Map Item Finder
+               ============================================================ */
+
+            .tactic-city-item-toggle-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+
+            .tactic-city-item-toggle-label {
+                font-size: 11px;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.92);
+            }
+
+            .tactic-tool-toggle {
+                width: 52px;
+                height: 26px;
+
+                padding: 0;
+
+                border: 1px solid rgba(255, 255, 255, 0.25);
+                border-radius: 999px;
+
+                font-size: 10px;
+                font-weight: 800;
+                line-height: 24px;
+                text-align: center;
+
+                cursor: pointer;
+                box-sizing: border-box;
+
+                transition:
+                    background 140ms ease,
+                    border-color 140ms ease,
+                    color 140ms ease,
+                    box-shadow 140ms ease;
+            }
+
+            .tactic-tool-toggle.is-on {
+                border-color: #69b8ff;
+
+                background:
+                    linear-gradient(
+                        180deg,
+                        #3d91ff 0%,
+                        #2674dc 100%
+                    );
+
+                color: #ffffff;
+
+                box-shadow:
+                    0 0 8px
+                    rgba(
+                        65,
+                        150,
+                        255,
+                        0.35
+                    );
+            }
+
+            .tactic-tool-toggle.is-off {
+                border-color:
+                    rgba(
+                        255,
+                        255,
+                        255,
+                        0.20
+                    );
+
+                background:
+                    rgba(
+                        255,
+                        255,
+                        255,
+                        0.07
+                    );
+
+                color:
+                    rgba(
+                        255,
+                        255,
+                        255,
+                        0.55
+                    );
+            }
+
+            .tactic-tool-toggle:hover {
+                border-color:
+                    rgba(
+                        130,
+                        195,
+                        255,
+                        0.85
+                    );
+            }
+
+            /* ============================================================
                City Map Item Finder Marker
                ============================================================ */
 

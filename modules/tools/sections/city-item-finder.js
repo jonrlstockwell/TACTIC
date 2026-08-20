@@ -1030,6 +1030,10 @@
             toggle
         );
 
+        root.appendChild(
+            toggleRow
+        );
+
         const status =
             components.createElement(
                 "div",
