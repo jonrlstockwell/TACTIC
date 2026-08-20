@@ -31,10 +31,48 @@
 
     const POLL_INTERVAL_MS =
         1000;
+    
+    const STORAGE_KEY_ENABLED =
+        "tactic:tools:city-item-finder:enabled";
+    
+    function readEnabledSetting() {
+        try {
+            const stored =
+                globalThis.localStorage
+                    ?.getItem(
+                        STORAGE_KEY_ENABLED
+                    );
+
+            if (stored === null) {
+                return true;
+            }
+
+            return stored ===
+                "true";
+        } catch {
+            return true;
+        }
+    }
+
+    function writeEnabledSetting(
+        enabled
+    ) {
+        try {
+            globalThis.localStorage
+                ?.setItem(
+                    STORAGE_KEY_ENABLED,
+                    enabled
+                        ? "true"
+                        : "false"
+                );
+        } catch {
+            // Ignore persistence errors.
+        }
+    }
 
     const state = {
         enabled:
-            false,
+            readEnabledSetting(),
 
         timerId:
             null,
@@ -847,6 +885,10 @@
         state.enabled =
             enabled ===
             true;
+        
+        writeEnabledSetting(
+            state.enabled
+        );
 
         if (
             state.enabled
@@ -917,7 +959,7 @@
                         "tactic-tool-description",
 
                     text:
-                        "Enlarge collectible City map items so they are easier to see and click.",
+                        "Enlarge collectibles on the city map.",
                 }
             )
         );
@@ -945,61 +987,47 @@
         );
 
         const toggle =
-            components.createElement(
-                "label",
+            components.createButton(
+                state.enabled
+                    ? "ON"
+                    : "OFF",
                 {
                     className:
-                        "tactic-city-item-switch",
-                }
-            );
+                        [
+                            "tactic-tool-toggle",
+                            state.enabled
+                                ? "is-on"
+                                : "is-off",
+                        ].join(
+                            " "
+                        ),
 
-        const checkbox =
-            components.createElement(
-                "input",
-                {
                     attributes: {
-                        type:
-                            "checkbox",
+                        "aria-pressed":
+                            state.enabled
+                                ? "true"
+                                : "false",
+
+                        title:
+                            state.enabled
+                                ? "Turn Item Finder off"
+                                : "Turn Item Finder on",
+                    },
+
+                    onClick() {
+                        setEnabled(
+                            !state.enabled
+                        );
+
+                        render(
+                            container
+                        );
                     },
                 }
             );
 
-        checkbox.checked =
-            state.enabled;
-
-        const slider =
-            components.createElement(
-                "span",
-                {
-                    className:
-                        "tactic-city-item-switch-slider",
-                }
-            );
-
-        checkbox.addEventListener(
-            "change",
-            () => {
-                setEnabled(
-                    checkbox.checked
-                );
-
-                render(
-                    container
-                );
-            }
-        );
-
-        toggle.append(
-            checkbox,
-            slider
-        );
-
         toggleRow.appendChild(
             toggle
-        );
-
-        root.appendChild(
-            toggleRow
         );
 
         const status =
@@ -1045,6 +1073,12 @@
         container.appendChild(
             root
         );
+    }
+
+    if (
+        state.enabled
+    ) {
+        startWatcher();
     }
 
     const section = {
