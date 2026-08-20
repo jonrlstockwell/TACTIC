@@ -49,40 +49,119 @@
             null,
     };
 
+    function getPageWindow() {
+        return (
+            document
+                ?.defaultView ||
+            globalThis
+        );
+    }
+
     function getTorn() {
-        return globalThis.torn ||
-            null;
+        return (
+            getPageWindow()
+                ?.torn ||
+            globalThis
+                ?.torn ||
+            null
+        );
     }
 
     function getLeaflet() {
-        return globalThis.L ||
-            null;
+        return (
+            getPageWindow()
+                ?.L ||
+            globalThis
+                ?.L ||
+            null
+        );
     }
 
-    function runtimeReady() {
+    function getRuntimeStatus() {
         const torn =
             getTorn();
 
         const leaflet =
             getLeaflet();
 
-        return Boolean(
-            torn &&
-            leaflet &&
-            torn.model &&
-            typeof torn.model.get ===
-                "function" &&
-            torn.map &&
-            torn.map.lmap &&
-            typeof torn.map.getLPoint ===
-                "function" &&
-            leaflet.CRS
-                ?.EPSG3857
-                ?.pointToLatLng &&
-            typeof leaflet.divIcon ===
-                "function" &&
-            typeof leaflet.marker ===
-                "function"
+        return {
+            torn:
+                Boolean(
+                    torn
+                ),
+
+            leaflet:
+                Boolean(
+                    leaflet
+                ),
+
+            model:
+                Boolean(
+                    torn
+                        ?.model
+                ),
+
+            modelGet:
+                typeof torn
+                    ?.model
+                    ?.get ===
+                "function",
+
+            map:
+                Boolean(
+                    torn
+                        ?.map
+                ),
+
+            leafletMap:
+                Boolean(
+                    torn
+                        ?.map
+                        ?.lmap
+                ),
+
+            getLPoint:
+                typeof torn
+                    ?.map
+                    ?.getLPoint ===
+                "function",
+
+            crs:
+                Boolean(
+                    leaflet
+                        ?.CRS
+                        ?.EPSG3857
+                ),
+
+            pointToLatLng:
+                typeof leaflet
+                    ?.CRS
+                    ?.EPSG3857
+                    ?.pointToLatLng ===
+                "function",
+
+            divIcon:
+                typeof leaflet
+                    ?.divIcon ===
+                "function",
+
+            marker:
+                typeof leaflet
+                    ?.marker ===
+                "function",
+        };
+    }
+
+    function runtimeReady() {
+        const status =
+            getRuntimeStatus();
+
+        return Object.values(
+            status
+        ).every(
+            value =>
+                value ===
+                true
         );
     }
 
@@ -1011,6 +1090,9 @@
 
                 runtimeReady:
                     runtimeReady(),
+
+                runtimeStatus:
+                    getRuntimeStatus(),
 
                 detectedCount:
                     state.detectedCount,
