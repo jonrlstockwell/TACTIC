@@ -339,7 +339,7 @@
             .tactic-tools-content {
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 14px;
                 min-width: 0;
             }
 
@@ -347,101 +347,292 @@
                 min-width: 0;
             }
 
+            /* ------------------------------------------------------------
+               Tool Card
+               ------------------------------------------------------------ */
+
             .tactic-tool-card {
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
-                padding: 12px;
-                border: 1px solid rgba(128, 128, 128, 0.28);
-                border-radius: 8px;
+                gap: 12px;
+
+                min-width: 0;
+                padding: 14px;
+
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 10px;
+
+                background:
+                    linear-gradient(
+                        180deg,
+                        rgba(255, 255, 255, 0.025),
+                        rgba(255, 255, 255, 0.01)
+                    );
+
                 box-sizing: border-box;
             }
 
             .tactic-tool-title {
                 font-size: 14px;
                 font-weight: 700;
+                line-height: 1.25;
+                color: #f5f5f5;
             }
 
             .tactic-tool-description {
                 font-size: 11px;
-                line-height: 1.4;
-                opacity: 0.72;
+                line-height: 1.45;
+                color: rgba(255, 255, 255, 0.68);
             }
+
+            /* ------------------------------------------------------------
+               Settings
+               ------------------------------------------------------------ */
 
             .tactic-tool-setting-row {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 10px;
+                gap: 12px;
+
+                padding-top: 2px;
             }
 
             .tactic-tool-setting-label {
                 min-width: 0;
+                max-width: 130px;
+
                 font-size: 11px;
-                font-weight: 600;
+                font-weight: 700;
+                line-height: 1.15;
+
+                color: rgba(255, 255, 255, 0.92);
             }
 
             .tactic-tool-number-wrap {
                 display: flex;
                 align-items: center;
-                gap: 5px;
+                gap: 6px;
+
                 flex: 0 0 auto;
+
+                font-size: 12px;
+                font-weight: 700;
+
+                color: rgba(255, 255, 255, 0.9);
             }
 
             .tactic-tool-number-input {
-                width: 60px;
+                width: 64px;
+                height: 28px;
+
+                padding: 3px 7px;
+
+                border: 1px solid rgba(255, 255, 255, 0.32);
+                border-radius: 4px;
+
+                background: #f4f4f4;
+                color: #111;
+
+                font-size: 12px;
+                font-weight: 600;
+
                 box-sizing: border-box;
             }
+
+            /* ------------------------------------------------------------
+               Detection Status
+               ------------------------------------------------------------ */
 
             .tactic-tool-status {
                 display: flex;
                 flex-direction: column;
-                gap: 2px;
-                padding: 8px;
-                border-radius: 6px;
-                background: rgba(128, 128, 128, 0.08);
+                gap: 5px;
+
+                padding: 10px 11px;
+
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 7px;
+
+                background: rgba(255, 255, 255, 0.045);
+
                 font-size: 10px;
                 line-height: 1.35;
+
+                color: rgba(255, 255, 255, 0.82);
             }
+
+            .tactic-tool-status > div {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .tactic-tool-status > div:first-child::before {
+                content: "◇";
+
+                color: #70b7ff;
+
+                font-size: 12px;
+                font-weight: 700;
+            }
+
+            .tactic-tool-status > div:last-child::before {
+                content: "✓";
+
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                width: 13px;
+                height: 13px;
+
+                border-radius: 50%;
+
+                background: rgba(90, 200, 125, 0.18);
+                color: #74db98;
+
+                font-size: 9px;
+                font-weight: 800;
+            }
+
+            /* ------------------------------------------------------------
+               Primary Action
+               ------------------------------------------------------------ */
 
             .tactic-tool-primary-button {
                 width: 100%;
-                min-height: 36px;
-                padding: 8px 12px;
+                min-width: 0;
+                min-height: 38px;
 
-                border: 1px solid rgba(110, 180, 255, 0.45);
-                border-radius: 6px;
+                padding: 9px 12px;
 
-                background: rgba(70, 130, 190, 0.18);
-                color: #8ecbff;
+                border: 1px solid #6db9ff;
+                border-radius: 7px;
+
+                background:
+                    linear-gradient(
+                        180deg,
+                        #3d8cff 0%,
+                        #256bd6 100%
+                    );
+
+                color: #ffffff;
 
                 font-size: 11px;
-                font-weight: 700;
+                font-weight: 800;
                 line-height: 1.2;
                 text-align: center;
 
+                box-shadow:
+                    0 0 0 1px rgba(80, 160, 255, 0.18),
+                    0 3px 10px rgba(0, 90, 210, 0.22);
+
                 cursor: pointer;
+
                 box-sizing: border-box;
+
+                transition:
+                    background 120ms ease,
+                    border-color 120ms ease,
+                    box-shadow 120ms ease,
+                    transform 80ms ease;
+            }
+
+            .tactic-tool-primary-button::before {
+                content: "↻";
+
+                display: inline-block;
+
+                margin-right: 6px;
+
+                font-size: 14px;
+                font-weight: 800;
+                line-height: 1;
+                vertical-align: -1px;
             }
 
             .tactic-tool-primary-button:hover:not(:disabled) {
-                background: rgba(70, 130, 190, 0.28);
-                border-color: rgba(110, 180, 255, 0.7);
+                border-color: #9ad0ff;
+
+                background:
+                    linear-gradient(
+                        180deg,
+                        #559cff 0%,
+                        #3178e5 100%
+                    );
+
+                box-shadow:
+                    0 0 0 1px rgba(100, 180, 255, 0.28),
+                    0 4px 13px rgba(0, 100, 225, 0.32);
             }
 
             .tactic-tool-primary-button:active:not(:disabled) {
-                background: rgba(70, 130, 190, 0.36);
+                transform: translateY(1px);
+
+                background:
+                    linear-gradient(
+                        180deg,
+                        #2878e8 0%,
+                        #1e5fc2 100%
+                    );
+
+                box-shadow:
+                    0 1px 5px rgba(0, 70, 180, 0.3);
+            }
+
+            .tactic-tool-primary-button:focus-visible {
+                outline: 2px solid rgba(125, 195, 255, 0.85);
+                outline-offset: 2px;
             }
 
             .tactic-tool-primary-button:disabled {
-                opacity: 0.4;
+                border-color: rgba(100, 160, 220, 0.25);
+
+                background: rgba(55, 95, 135, 0.22);
+
+                color: rgba(150, 190, 225, 0.42);
+
+                box-shadow: none;
+
                 cursor: default;
             }
 
+            /* ------------------------------------------------------------
+               Last Result
+               ------------------------------------------------------------ */
+
             .tactic-tool-result {
+                padding-top: 1px;
+
                 font-size: 10px;
+                font-weight: 600;
+                line-height: 1.3;
+
                 text-align: center;
-                opacity: 0.72;
+
+                color: #79baff;
+            }
+
+            .tactic-tool-result::before {
+                content: "✓";
+
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                width: 13px;
+                height: 13px;
+
+                margin-right: 5px;
+
+                border: 1px solid rgba(100, 220, 145, 0.65);
+                border-radius: 50%;
+
+                color: #76dd9c;
+
+                font-size: 8px;
+                font-weight: 800;
             }
         `;
 
