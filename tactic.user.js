@@ -214,7 +214,7 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/city-item-finder.js?v=7
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/city-item-finder.js?v=8
 //
 //
 // ============================================================

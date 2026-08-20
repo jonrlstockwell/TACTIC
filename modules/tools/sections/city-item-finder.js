@@ -85,6 +85,12 @@
 
         lastRefreshAt:
             null,
+
+        statusEnabledElement:
+            null,
+
+        statusCountElement:
+            null,
     };
 
     function getPageWindow() {
@@ -714,6 +720,8 @@
 
         state.detectedCount =
             0;
+
+        updateStatusDisplay();
     }
 
     function createMarker(
@@ -843,6 +851,39 @@
         return marker;
     }
 
+    function updateStatusDisplay() {
+        const enabledElement =
+            state.statusEnabledElement;
+
+        const countElement =
+            state.statusCountElement;
+
+        if (
+            enabledElement &&
+            enabledElement.isConnected
+        ) {
+            enabledElement.textContent =
+                state.enabled
+                    ? "Finder enabled"
+                    : "Finder disabled";
+        }
+
+        if (
+            countElement &&
+            countElement.isConnected
+        ) {
+            countElement.textContent =
+                state.enabled
+                    ? `${state.detectedCount} collectible${
+                        state.detectedCount ===
+                        1
+                            ? ""
+                            : "s"
+                    } highlighted`
+                    : "No map modifications active";
+        }
+    }
+
     function syncMarkers() {
         state.lastRefreshAt =
             Date.now();
@@ -933,6 +974,8 @@
         state.detectedCount =
             state.markers
                 .size;
+
+        updateStatusDisplay();
 
         return items;
     }
@@ -1134,7 +1177,7 @@
                 }
             );
 
-        status.append(
+        const statusEnabledElement =
             components.createElement(
                 "div",
                 {
@@ -1143,22 +1186,33 @@
                             ? "Finder enabled"
                             : "Finder disabled",
                 }
-            ),
+            );
 
+        const statusCountElement =
             components.createElement(
                 "div",
                 {
                     text:
                         state.enabled
                             ? `${state.detectedCount} collectible${
-                                  state.detectedCount ===
-                                  1
-                                      ? ""
-                                      : "s"
-                              } highlighted`
+                                state.detectedCount ===
+                                1
+                                    ? ""
+                                    : "s"
+                            } highlighted`
                             : "No map modifications active",
                 }
-            )
+            );
+
+        state.statusEnabledElement =
+            statusEnabledElement;
+
+        state.statusCountElement =
+            statusCountElement;
+
+        status.append(
+            statusEnabledElement,
+            statusCountElement
         );
 
         root.appendChild(
