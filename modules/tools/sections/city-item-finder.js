@@ -26,688 +26,207 @@
     const SECTION_ID =
         "city-item-finder";
 
-    const SCAN_INTERVAL_MS =
-        750;
+    const MAP_SELECTOR =
+        "#map";
 
-    const OVERLAY_CLASS =
-        "tactic-city-item-marker";
+    const ITEM_SELECTOR =
+        ".tt-city-item-overlay.city-item";
+
+    const HIGHLIGHT_CLASS =
+        "tactic-city-item-highlight";
 
     const state = {
         enabled:
             false,
 
-        scanTimerId:
+        observer:
             null,
 
-        scanCount:
-            0,
+        observedMap:
+            null,
 
         detectedCount:
             0,
 
-        lastScanAt:
+        lastRefreshAt:
             null,
-
-        lastDetectionAt:
-            null,
-
-        candidates:
-            [],
     };
 
-    function getMapElement() {
+    function getMap() {
         return document.querySelector(
-            "#map"
+            MAP_SELECTOR
         );
     }
 
-    function getCanvas() {
-        return document.querySelector(
-            "#map .leaflet-overlay-pane canvas"
-        );
-    }
-
-    function removeOverlays() {
-        document
-            .querySelectorAll(
-                `.${OVERLAY_CLASS}`
-            )
-            .forEach(
-                element => {
-                    element.remove();
-                }
-            );
-    }
-
-    function isCollectibleCandidate(
-        candidate
-    ) {
-        if (!candidate) {
-            return false;
-        }
-
-        const {
-            pixels,
-            width,
-            height,
-            aspectRatio,
-        } =
-            candidate;
-
-        return (
-            pixels >= 70 &&
-            width >= 20 &&
-            width <= 60 &&
-            height >= 20 &&
-            height <= 60 &&
-            aspectRatio >= 0.75 &&
-            aspectRatio <= 1.33
-        );
-    }
-
-    function findBrightComponents(
-        canvas
-    ) {
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    willReadFrequently:
-                        true,
-                }
-            );
-
-        if (!context) {
-            return [];
-        }
-
-        let imageData;
-
-        try {
-            imageData =
-                context.getImageData(
-                    0,
-                    0,
-                    canvas.width,
-                    canvas.height
-                );
-        } catch (error) {
-            logger?.debug(
-                "City Item Finder could not read map canvas",
-                {
-                    error,
-                }
-            );
-
-            return [];
-        }
-
-        const {
-            data,
-            width,
-            height,
-        } =
-            imageData;
-
-        const matching =
-            new Uint8Array(
-                width *
-                height
-            );
-
-        /*
-         * Identify bright, low-saturation pixels.
-         *
-         * The collectible marker uses a light outer ring.
-         * The item image inside can be any color, so we do not
-         * attempt to match the item sprite itself.
-         */
-        for (
-            let y = 0;
-            y < height;
-            y += 1
-        ) {
-            for (
-                let x = 0;
-                x < width;
-                x += 1
-            ) {
-                const pixelIndex =
-                    y * width +
-                    x;
-
-                const dataIndex =
-                    pixelIndex * 4;
-
-                const red =
-                    data[
-                        dataIndex
-                    ];
-
-                const green =
-                    data[
-                        dataIndex + 1
-                    ];
-
-                const blue =
-                    data[
-                        dataIndex + 2
-                    ];
-
-                const alpha =
-                    data[
-                        dataIndex + 3
-                    ];
-
-                const brightest =
-                    Math.max(
-                        red,
-                        green,
-                        blue
-                    );
-
-                const darkest =
-                    Math.min(
-                        red,
-                        green,
-                        blue
-                    );
-
-                const spread =
-                    brightest -
-                    darkest;
-
-                if (
-                    alpha >= 150 &&
-                    red >= 175 &&
-                    green >= 175 &&
-                    blue >= 175 &&
-                    spread <= 45
-                ) {
-                    matching[
-                        pixelIndex
-                    ] = 1;
-                }
-            }
-        }
-
-        const visited =
-            new Uint8Array(
-                width *
-                height
-            );
-
-        const found =
-            [];
-
-        const directions = [
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1],
-            [-1, -1],
-            [1, -1],
-            [-1, 1],
-            [1, 1],
+    function getItems() {
+        return [
+            ...document.querySelectorAll(
+                ITEM_SELECTOR
+            ),
         ];
+    }
+
+    function applyHighlights() {
+        const items =
+            getItems();
 
         for (
-            let y = 0;
-            y < height;
-            y += 1
+            const item of
+            items
         ) {
-            for (
-                let x = 0;
-                x < width;
-                x += 1
-            ) {
-                const startIndex =
-                    y * width +
-                    x;
-
-                if (
-                    !matching[
-                        startIndex
-                    ] ||
-                    visited[
-                        startIndex
-                    ]
-                ) {
-                    continue;
-                }
-
-                const queue = [
-                    [x, y],
-                ];
-
-                visited[
-                    startIndex
-                ] = 1;
-
-                let minX =
-                    x;
-
-                let maxX =
-                    x;
-
-                let minY =
-                    y;
-
-                let maxY =
-                    y;
-
-                let pixels =
-                    0;
-
-                while (
-                    queue.length >
-                    0
-                ) {
-                    const [
-                        currentX,
-                        currentY,
-                    ] =
-                        queue.pop();
-
-                    pixels +=
-                        1;
-
-                    minX =
-                        Math.min(
-                            minX,
-                            currentX
-                        );
-
-                    maxX =
-                        Math.max(
-                            maxX,
-                            currentX
-                        );
-
-                    minY =
-                        Math.min(
-                            minY,
-                            currentY
-                        );
-
-                    maxY =
-                        Math.max(
-                            maxY,
-                            currentY
-                        );
-
-                    for (
-                        const [
-                            offsetX,
-                            offsetY,
-                        ] of directions
-                    ) {
-                        const nextX =
-                            currentX +
-                            offsetX;
-
-                        const nextY =
-                            currentY +
-                            offsetY;
-
-                        if (
-                            nextX < 0 ||
-                            nextY < 0 ||
-                            nextX >=
-                                width ||
-                            nextY >=
-                                height
-                        ) {
-                            continue;
-                        }
-
-                        const nextIndex =
-                            nextY *
-                                width +
-                            nextX;
-
-                        if (
-                            !matching[
-                                nextIndex
-                            ] ||
-                            visited[
-                                nextIndex
-                            ]
-                        ) {
-                            continue;
-                        }
-
-                        visited[
-                            nextIndex
-                        ] = 1;
-
-                        queue.push(
-                            [
-                                nextX,
-                                nextY,
-                            ]
-                        );
-                    }
-                }
-
-                const componentWidth =
-                    maxX -
-                    minX +
-                    1;
-
-                const componentHeight =
-                    maxY -
-                    minY +
-                    1;
-
-                if (
-                    componentWidth <
-                        3 ||
-                    componentHeight <
-                        3 ||
-                    componentWidth >
-                        60 ||
-                    componentHeight >
-                        60
-                ) {
-                    continue;
-                }
-
-                found.push({
-                    pixels,
-
-                    x:
-                        minX,
-
-                    y:
-                        minY,
-
-                    width:
-                        componentWidth,
-
-                    height:
-                        componentHeight,
-
-                    centerX:
-                        (
-                            minX +
-                            maxX
-                        ) /
-                        2,
-
-                    centerY:
-                        (
-                            minY +
-                            maxY
-                        ) /
-                        2,
-
-                    aspectRatio:
-                        componentWidth /
-                        componentHeight,
-                });
-            }
-        }
-
-        return found.filter(
-            isCollectibleCandidate
-        );
-    }
-
-    function forwardMapClick(
-        clientX,
-        clientY
-    ) {
-        const map =
-            getMapElement();
-
-        if (!map) {
-            return;
-        }
-
-        /*
-         * Leaflet calculates the map coordinate from clientX/clientY.
-         * Sending the click to Torn's real map keeps collection under
-         * Torn's own event handling.
-         */
-        const mouseOptions = {
-            bubbles:
-                true,
-
-            cancelable:
-                true,
-
-            view:
-                globalThis,
-
-            clientX,
-
-            clientY,
-
-            button:
-                0,
-
-            buttons:
-                1,
-        };
-
-        map.dispatchEvent(
-            new MouseEvent(
-                "mousedown",
-                mouseOptions
-            )
-        );
-
-        map.dispatchEvent(
-            new MouseEvent(
-                "mouseup",
-                {
-                    ...mouseOptions,
-
-                    buttons:
-                        0,
-                }
-            )
-        );
-
-        map.dispatchEvent(
-            new MouseEvent(
-                "click",
-                {
-                    ...mouseOptions,
-
-                    buttons:
-                        0,
-                }
-            )
-        );
-    }
-
-    function createOverlay(
-        candidate,
-        canvas,
-        map
-    ) {
-        const canvasRect =
-            canvas.getBoundingClientRect();
-
-        const mapRect =
-            map.getBoundingClientRect();
-
-        const scaleX =
-            canvasRect.width /
-            canvas.width;
-
-        const scaleY =
-            canvasRect.height /
-            canvas.height;
-
-        const clientX =
-            canvasRect.left +
-            candidate.centerX *
-                scaleX;
-
-        const clientY =
-            canvasRect.top +
-            candidate.centerY *
-                scaleY;
-
-        const mapX =
-            clientX -
-            mapRect.left;
-
-        const mapY =
-            clientY -
-            mapRect.top;
-
-        const overlay =
-            document.createElement(
-                "button"
+            item.classList.add(
+                HIGHLIGHT_CLASS
             );
-
-        overlay.type =
-            "button";
-
-        overlay.className =
-            OVERLAY_CLASS;
-
-        overlay.setAttribute(
-            "aria-label",
-            "City collectible item"
-        );
-
-        overlay.setAttribute(
-            "title",
-            "Collectible item"
-        );
-
-        overlay.style.left =
-            `${mapX}px`;
-
-        overlay.style.top =
-            `${mapY}px`;
-
-        overlay.addEventListener(
-            "click",
-            event => {
-                event.preventDefault();
-
-                event.stopPropagation();
-
-                forwardMapClick(
-                    clientX,
-                    clientY
-                );
-            }
-        );
-
-        map.appendChild(
-            overlay
-        );
-    }
-
-    function scanMap() {
-        state.scanCount +=
-            1;
-
-        state.lastScanAt =
-            Date.now();
-
-        removeOverlays();
-
-        if (!state.enabled) {
-            state.detectedCount =
-                0;
-
-            state.candidates =
-                [];
-
-            return [];
         }
-
-        const map =
-            getMapElement();
-
-        const canvas =
-            getCanvas();
-
-        if (
-            !map ||
-            !canvas
-        ) {
-            state.detectedCount =
-                0;
-
-            state.candidates =
-                [];
-
-            return [];
-        }
-
-        const candidates =
-            findBrightComponents(
-                canvas
-            );
-
-        state.candidates =
-            candidates;
 
         state.detectedCount =
-            candidates.length;
+            items.length;
 
-        if (
-            candidates.length >
-            0
-        ) {
-            state.lastDetectionAt =
-                Date.now();
-        }
+        state.lastRefreshAt =
+            Date.now();
 
-        for (
-            const candidate of
-            candidates
-        ) {
-            createOverlay(
-                candidate,
-                canvas,
-                map
-            );
-        }
-
-        return candidates;
+        return items;
     }
 
-    function stopScanner() {
-        if (
-            state.scanTimerId !==
-            null
-        ) {
-            globalThis.clearInterval(
-                state.scanTimerId
+    function removeHighlights() {
+        document
+            .querySelectorAll(
+                `${ITEM_SELECTOR}.${HIGHLIGHT_CLASS}`
+            )
+            .forEach(
+                item => {
+                    item.classList.remove(
+                        HIGHLIGHT_CLASS
+                    );
+                }
             );
 
-            state.scanTimerId =
+        state.detectedCount =
+            0;
+    }
+
+    function stopObserver() {
+        if (
+            state.observer
+        ) {
+            state.observer
+                .disconnect();
+
+            state.observer =
                 null;
         }
 
-        removeOverlays();
+        state.observedMap =
+            null;
     }
 
-    function startScanner() {
-        if (
-            state.scanTimerId !==
-            null
-        ) {
-            return;
+    function startObserver() {
+        const map =
+            getMap();
+
+        if (!map) {
+            stopObserver();
+
+            return false;
         }
 
-        scanMap();
+        if (
+            state.observer &&
+            state.observedMap ===
+                map
+        ) {
+            return true;
+        }
 
-        state.scanTimerId =
-            globalThis.setInterval(
-                scanMap,
-                SCAN_INTERVAL_MS
+        stopObserver();
+
+        state.observedMap =
+            map;
+
+        state.observer =
+            new MutationObserver(
+                mutations => {
+                    if (
+                        !state.enabled
+                    ) {
+                        return;
+                    }
+
+                    let shouldRefresh =
+                        false;
+
+                    for (
+                        const mutation of
+                        mutations
+                    ) {
+                        if (
+                            mutation.type !==
+                            "childList"
+                        ) {
+                            continue;
+                        }
+
+                        if (
+                            mutation.addedNodes
+                                .length >
+                            0 ||
+                            mutation.removedNodes
+                                .length >
+                            0
+                        ) {
+                            shouldRefresh =
+                                true;
+
+                            break;
+                        }
+                    }
+
+                    if (
+                        shouldRefresh
+                    ) {
+                        applyHighlights();
+                    }
+                }
             );
+
+        state.observer.observe(
+            map,
+            {
+                childList:
+                    true,
+
+                subtree:
+                    true,
+            }
+        );
+
+        return true;
+    }
+
+    function refresh() {
+        if (
+            !state.enabled
+        ) {
+            removeHighlights();
+
+            return [];
+        }
+
+        const map =
+            getMap();
+
+        if (!map) {
+            stopObserver();
+
+            state.detectedCount =
+                0;
+
+            return [];
+        }
+
+        startObserver();
+
+        return applyHighlights();
     }
 
     function setEnabled(
@@ -720,15 +239,11 @@
         if (
             state.enabled
         ) {
-            startScanner();
+            refresh();
         } else {
-            stopScanner();
+            stopObserver();
 
-            state.detectedCount =
-                0;
-
-            state.candidates =
-                [];
+            removeHighlights();
         }
 
         logger?.info(
@@ -736,7 +251,61 @@
             {
                 enabled:
                     state.enabled,
+
+                detectedCount:
+                    state.detectedCount,
             }
+        );
+    }
+
+    function ensurePageLifecycle() {
+        /*
+         * Torn can replace the City map DOM during navigation.
+         * Recheck periodically so the observer follows the new map.
+         */
+        globalThis.setInterval(
+            () => {
+                if (
+                    !state.enabled
+                ) {
+                    return;
+                }
+
+                const map =
+                    getMap();
+
+                if (
+                    !map
+                ) {
+                    stopObserver();
+
+                    state.detectedCount =
+                        0;
+
+                    return;
+                }
+
+                if (
+                    state.observedMap !==
+                    map
+                ) {
+                    refresh();
+
+                    return;
+                }
+
+                const currentCount =
+                    getItems()
+                        .length;
+
+                if (
+                    currentCount !==
+                    state.detectedCount
+                ) {
+                    applyHighlights();
+                }
+            },
+            1000
         );
     }
 
@@ -748,6 +317,15 @@
             !components
         ) {
             return;
+        }
+
+        /*
+         * Refresh state whenever Tools renders.
+         */
+        if (
+            state.enabled
+        ) {
+            refresh();
         }
 
         components.clearElement(
@@ -782,7 +360,7 @@
                         "tactic-tool-description",
 
                     text:
-                        "Make collectible City map items larger and easier to see and click.",
+                        "Enlarge collectible City map items so they are easier to see and click.",
                 }
             )
         );
@@ -912,6 +490,8 @@
         );
     }
 
+    ensurePageLifecycle();
+
     const section = {
         id:
             SECTION_ID,
@@ -935,8 +515,7 @@
 
         setEnabled,
 
-        scan:
-            scanMap,
+        refresh,
 
         inspect() {
             return {
@@ -949,39 +528,47 @@
                 enabled:
                     state.enabled,
 
-                scannerActive:
-                    state.scanTimerId !==
-                    null,
+                observerActive:
+                    Boolean(
+                        state.observer
+                    ),
 
-                scanCount:
-                    state.scanCount,
+                mapPresent:
+                    Boolean(
+                        getMap()
+                    ),
 
                 detectedCount:
                     state.detectedCount,
 
-                lastScanAt:
-                    state.lastScanAt,
+                lastRefreshAt:
+                    state.lastRefreshAt,
 
-                lastDetectionAt:
-                    state.lastDetectionAt,
-
-                candidates:
-                    state.candidates
+                highlightedItems:
+                    getItems()
+                        .filter(
+                            item =>
+                                item.classList
+                                    .contains(
+                                        HIGHLIGHT_CLASS
+                                    )
+                        )
                         .map(
-                            candidate => ({
-                                ...candidate,
+                            item => ({
+                                itemId:
+                                    item.dataset
+                                        ?.itemId ||
+                                    null,
+
+                                entryId:
+                                    item.dataset
+                                        ?.entryId ||
+                                    null,
+
+                                className:
+                                    item.className,
                             })
                         ),
-
-                mapPresent:
-                    Boolean(
-                        getMapElement()
-                    ),
-
-                canvasPresent:
-                    Boolean(
-                        getCanvas()
-                    ),
             };
         },
     };

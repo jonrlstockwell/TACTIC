@@ -639,190 +639,146 @@
                City Map Item Finder
                ============================================================ */
 
-            .tactic-city-item-toggle-row {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
+            /*
+             * Torn's collectible marker is normally 38px × 38px with:
+             *
+             * width: 38px;
+             * height: 38px;
+             * margin-left: -19px;
+             * margin-top: -19px;
+             *
+             * TACTIC enlarges the real Leaflet marker while keeping its
+             * center anchored to exactly the same map coordinate.
+             */
+
+            .tt-city-item-overlay.city-item.tactic-city-item-highlight {
+                width: 64px !important;
+                height: 64px !important;
+
+                margin-left: -32px !important;
+                margin-top: -32px !important;
+
+                z-index: 10000 !important;
+
+                border-radius: 50% !important;
+
+                filter:
+                    drop-shadow(
+                        0 0 4px
+                        rgba(
+                            255,
+                            255,
+                            255,
+                            0.95
+                        )
+                    )
+                    drop-shadow(
+                        0 0 9px
+                        rgba(
+                            80,
+                            180,
+                            255,
+                            0.9
+                        )
+                    );
+
+                cursor: pointer !important;
             }
 
-            .tactic-city-item-toggle-label {
-                font-size: 11px;
-                font-weight: 700;
-                color: rgba(255, 255, 255, 0.92);
+            /*
+             * Torn defines the content as 38px square.
+             * Expand it to fill our larger marker.
+             */
+            .tt-city-item-overlay.city-item.tactic-city-item-highlight
+            .tt-city-item-overlay-content {
+                display: block !important;
+
+                width: 64px !important;
+                height: 64px !important;
+
+                border-radius: 50% !important;
+
+                box-sizing: border-box !important;
             }
 
-            .tactic-city-item-switch {
-                position: relative;
+            /*
+             * The actual spawned item sprite.
+             */
+            .tt-city-item-overlay.city-item.tactic-city-item-highlight
+            .tt-city-item-overlay-content img {
+                width: 100% !important;
+                height: 100% !important;
 
-                display: inline-block;
+                object-fit: contain !important;
 
-                width: 42px;
-                height: 22px;
-
-                flex: 0 0 auto;
-
-                cursor: pointer;
+                border-radius: 50% !important;
             }
 
-            .tactic-city-item-switch input {
-                width: 0;
-                height: 0;
-
-                opacity: 0;
-            }
-
-            .tactic-city-item-switch-slider {
-                position: absolute;
-
-                inset: 0;
-
-                border: 1px solid rgba(255, 255, 255, 0.22);
-                border-radius: 999px;
-
-                background: rgba(255, 255, 255, 0.1);
-
-                transition:
-                    background 140ms ease,
-                    border-color 140ms ease;
-            }
-
-            .tactic-city-item-switch-slider::before {
+            /*
+             * Additional highly visible ring around the existing marker.
+             */
+            .tt-city-item-overlay.city-item.tactic-city-item-highlight::after {
                 content: "";
 
                 position: absolute;
 
-                width: 16px;
-                height: 16px;
+                left: -5px;
+                top: -5px;
 
-                left: 2px;
-                top: 2px;
+                width: 74px;
+                height: 74px;
 
-                border-radius: 50%;
-
-                background: rgba(255, 255, 255, 0.75);
-
-                transition:
-                    transform 140ms ease,
-                    background 140ms ease;
-            }
-
-            .tactic-city-item-switch input:checked +
-            .tactic-city-item-switch-slider {
-                border-color: #6db9ff;
-
-                background: #287be0;
-            }
-
-            .tactic-city-item-switch input:checked +
-            .tactic-city-item-switch-slider::before {
-                transform: translateX(20px);
-
-                background: #ffffff;
-            }
-
-            /*
-             * Enlarged marker placed over Torn's real collectible.
-             *
-             * The marker is intentionally much larger than the original,
-             * making both the visual target and click target easier to use.
-             */
-            .tactic-city-item-marker {
-                position: absolute;
-
-                width: 58px;
-                height: 58px;
-
-                margin-left: -29px;
-                margin-top: -29px;
-
-                padding: 0;
-
-                border: 3px solid #ffffff;
-                border-radius: 50%;
-
-                background:
-                    radial-gradient(
-                        circle,
-                        rgba(255, 215, 55, 0.38) 0%,
-                        rgba(255, 170, 0, 0.2) 45%,
-                        rgba(255, 120, 0, 0.05) 68%,
-                        transparent 70%
+                border: 3px solid
+                    rgba(
+                        110,
+                        200,
+                        255,
+                        0.95
                     );
 
+                border-radius: 50%;
+
                 box-shadow:
-                    0 0 0 3px rgba(0, 0, 0, 0.72),
-                    0 0 13px rgba(255, 195, 40, 0.9),
-                    0 0 24px rgba(255, 140, 20, 0.45);
+                    0 0 8px
+                    rgba(
+                        100,
+                        200,
+                        255,
+                        0.9
+                    ),
+                    0 0 18px
+                    rgba(
+                        50,
+                        150,
+                        255,
+                        0.55
+                    );
 
-                z-index: 1000;
-
-                cursor: pointer;
+                pointer-events: none;
 
                 box-sizing: border-box;
 
                 animation:
-                    tactic-city-item-pulse
-                    1.4s
+                    tactic-city-item-highlight-pulse
+                    1.5s
                     ease-in-out
                     infinite;
             }
 
-            .tactic-city-item-marker::after {
-                content: "";
-
-                position: absolute;
-
-                left: 50%;
-                top: 50%;
-
-                width: 8px;
-                height: 8px;
-
-                transform:
-                    translate(
-                        -50%,
-                        -50%
-                    );
-
-                border-radius: 50%;
-
-                background: #ffffff;
-
-                box-shadow:
-                    0 0 6px
-                    rgba(
-                        255,
-                        255,
-                        255,
-                        0.95
-                    );
-            }
-
-            .tactic-city-item-marker:hover {
-                width: 66px;
-                height: 66px;
-
-                margin-left: -33px;
-                margin-top: -33px;
-
-                border-color: #ffe46a;
-            }
-
-            @keyframes tactic-city-item-pulse {
+            @keyframes tactic-city-item-highlight-pulse {
                 0%,
                 100% {
-                    box-shadow:
-                        0 0 0 3px rgba(0, 0, 0, 0.72),
-                        0 0 10px rgba(255, 195, 40, 0.72),
-                        0 0 18px rgba(255, 140, 20, 0.32);
+                    opacity: 0.7;
+
+                    transform:
+                        scale(0.94);
                 }
 
                 50% {
-                    box-shadow:
-                        0 0 0 3px rgba(0, 0, 0, 0.72),
-                        0 0 17px rgba(255, 215, 70, 1),
-                        0 0 30px rgba(255, 145, 20, 0.55);
+                    opacity: 1;
+
+                    transform:
+                        scale(1.04);
                 }
             }
         `;
