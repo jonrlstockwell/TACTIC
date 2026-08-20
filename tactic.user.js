@@ -151,7 +151,7 @@
 // Shared components must load before the drawer.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=6
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=7
 //
 //
 // ============================================================
@@ -214,6 +214,7 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/city-item-finder.js?v=1
 //
 //
 // ============================================================
