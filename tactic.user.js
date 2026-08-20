@@ -151,7 +151,7 @@
 // Shared components must load before the drawer.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/components/index.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=3
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/ui/drawer/index.js?v=4
 //
 //
 // ============================================================
@@ -205,7 +205,7 @@
 // Bazaar application shell. Individual Bazaar sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/index.js?v=4
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/tools/index.js?v=1
 //
 //
 // ============================================================
@@ -213,7 +213,7 @@
 // Must load after the Bazaar application shell.
 // ============================================================
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/listing.js?v=4
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=1
 //
 //
 // ============================================================
