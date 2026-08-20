@@ -26,24 +26,21 @@
     const SECTION_ID =
         "city-item-finder";
 
-    const MAP_SELECTOR =
-        "#map";
+    const MARKER_SIZE =
+        72;
 
-    const ITEM_SELECTOR =
-        ".tt-city-item-overlay.city-item";
-
-    const HIGHLIGHT_CLASS =
-        "tactic-city-item-highlight";
+    const POLL_INTERVAL_MS =
+        1000;
 
     const state = {
         enabled:
             false,
 
-        observer:
+        timerId:
             null,
 
-        observedMap:
-            null,
+        markers:
+            new Map(),
 
         detectedCount:
             0,
@@ -52,181 +49,717 @@
             null,
     };
 
-    function getMap() {
-        return document.querySelector(
-            MAP_SELECTOR
+    function getTorn() {
+        return globalThis.torn ||
+            null;
+    }
+
+    function getLeaflet() {
+        return globalThis.L ||
+            null;
+    }
+
+    function runtimeReady() {
+        const torn =
+            getTorn();
+
+        const leaflet =
+            getLeaflet();
+
+        return Boolean(
+            torn &&
+            leaflet &&
+            torn.model &&
+            typeof torn.model.get ===
+                "function" &&
+            torn.map &&
+            torn.map.lmap &&
+            typeof torn.map.getLPoint ===
+                "function" &&
+            leaflet.CRS
+                ?.EPSG3857
+                ?.pointToLatLng &&
+            typeof leaflet.divIcon ===
+                "function" &&
+            typeof leaflet.marker ===
+                "function"
         );
     }
 
-    function getItems() {
-        return [
-            ...document.querySelectorAll(
-                ITEM_SELECTOR
-            ),
-        ];
-    }
-
-    function applyHighlights() {
-        const items =
-            getItems();
-
+    function firstDefined(
+        object,
+        keys
+    ) {
         for (
-            const item of
-            items
+            const key of
+            keys
         ) {
-            item.classList.add(
-                HIGHLIGHT_CLASS
-            );
+            if (
+                object &&
+                object[key] !==
+                    undefined &&
+                object[key] !==
+                    null
+            ) {
+                return object[key];
+            }
         }
 
-        state.detectedCount =
-            items.length;
-
-        state.lastRefreshAt =
-            Date.now();
-
-        return items;
+        return undefined;
     }
 
-    function removeHighlights() {
-        document
-            .querySelectorAll(
-                `${ITEM_SELECTOR}.${HIGHLIGHT_CLASS}`
+    function toNumber(
+        value,
+        base = 10
+    ) {
+        if (
+            typeof value ===
+                "number" &&
+            Number.isFinite(
+                value
             )
-            .forEach(
-                item => {
-                    item.classList.remove(
-                        HIGHLIGHT_CLASS
+        ) {
+            return value;
+        }
+
+        const text =
+            String(
+                value ??
+                ""
+            )
+                .trim();
+
+        if (!text) {
+            return null;
+        }
+
+        const numeric =
+            base === 10 &&
+            /^-?\d+(?:\.\d+)?$/
+                .test(
+                    text
+                )
+                ? Number(
+                      text
+                  )
+                : parseInt(
+                      text,
+                      base
+                  );
+
+        return Number.isFinite(
+            numeric
+        )
+            ? numeric
+            : null;
+    }
+
+    function parseItem(
+        raw
+    ) {
+        if (
+            !raw ||
+            typeof raw !==
+                "object"
+        ) {
+            return null;
+        }
+
+        let x =
+            null;
+
+        let y =
+            null;
+
+        if (
+            Array.isArray(
+                raw.coordinates
+            )
+        ) {
+            x =
+                raw.coordinates[0];
+
+            y =
+                raw.coordinates[1];
+        } else if (
+            raw.c &&
+            typeof raw.c ===
+                "object"
+        ) {
+            x =
+                raw.c.x;
+
+            y =
+                raw.c.y;
+        } else {
+            x =
+                raw.x;
+
+            y =
+                raw.y;
+        }
+
+        const parsedX =
+            toNumber(
+                x,
+                36
+            );
+
+        const parsedY =
+            toNumber(
+                y,
+                36
+            );
+
+        if (
+            !Number.isFinite(
+                parsedX
+            ) ||
+            !Number.isFinite(
+                parsedY
+            )
+        ) {
+            return null;
+        }
+
+        const itemIdRaw =
+            firstDefined(
+                raw,
+                [
+                    "item_id",
+                    "itemID",
+                    "itemId",
+                    "item",
+                    "ID",
+                ]
+            );
+
+        const itemId =
+            toNumber(
+                itemIdRaw,
+                10
+            ) ||
+            toNumber(
+                raw.d,
+                36
+            );
+
+        const rowRaw =
+            firstDefined(
+                raw,
+                [
+                    "row_id",
+                    "rowID",
+                    "rowId",
+                    "id",
+                ]
+            );
+
+        const rowId =
+            rowRaw ===
+            undefined
+                ? ""
+                : String(
+                      rowRaw
+                  );
+
+        const title =
+            String(
+                raw.title ||
+                raw.name ||
+                (
+                    itemId
+                        ? `Item #${itemId}`
+                        : "City item"
+                )
+            );
+
+        return {
+            key:
+                [
+                    rowId ||
+                        "row",
+                    itemId ||
+                        title,
+                    Math.round(
+                        parsedX
+                    ),
+                    Math.round(
+                        parsedY
+                    ),
+                ].join(
+                    "|"
+                ),
+
+            rowId,
+
+            itemId,
+
+            title,
+
+            x:
+                parsedX,
+
+            y:
+                parsedY,
+
+            raw,
+        };
+    }
+
+    function getItems() {
+        if (
+            !runtimeReady()
+        ) {
+            return [];
+        }
+
+        let rawItems =
+            [];
+
+        try {
+            rawItems =
+                getTorn()
+                    .model
+                    .get(
+                        "territoryUserItems"
+                    ) ||
+                [];
+        } catch {
+            rawItems =
+                [];
+        }
+
+        if (
+            typeof rawItems ===
+                "string"
+        ) {
+            try {
+                rawItems =
+                    JSON.parse(
+                        rawItems
                     );
+            } catch {
+                rawItems =
+                    [];
+            }
+        }
+
+        if (
+            !Array.isArray(
+                rawItems
+            ) &&
+            rawItems &&
+            typeof rawItems ===
+                "object"
+        ) {
+            rawItems =
+                Object.values(
+                    rawItems
+                );
+        }
+
+        return (
+            Array.isArray(
+                rawItems
+            )
+                ? rawItems
+                : []
+        )
+            .map(
+                parseItem
+            )
+            .filter(
+                Boolean
+            );
+    }
+
+    function getLatLng(
+        item
+    ) {
+        if (
+            !runtimeReady() ||
+            !item
+        ) {
+            return null;
+        }
+
+        const torn =
+            getTorn();
+
+        const leaflet =
+            getLeaflet();
+
+        try {
+            const point = [
+                item.x / 2,
+                item.y / 2,
+            ];
+
+            const leafletPoint =
+                torn.map
+                    .getLPoint(
+                        point
+                    );
+
+            const latLng =
+                leaflet.CRS
+                    .EPSG3857
+                    .pointToLatLng(
+                        leafletPoint,
+                        torn.map
+                            .minZoom
+                    );
+
+            if (
+                !latLng ||
+                !Number.isFinite(
+                    latLng.lat
+                ) ||
+                !Number.isFinite(
+                    latLng.lng
+                )
+            ) {
+                return null;
+            }
+
+            return latLng;
+        } catch (
+            error
+        ) {
+            logger?.debug(
+                "City Item Finder could not resolve item position",
+                {
+                    item:
+                        item.title,
+
+                    error,
                 }
             );
+
+            return null;
+        }
+    }
+
+    function getItemImageUrl(
+        itemId
+    ) {
+        if (!itemId) {
+            return "";
+        }
+
+        return (
+            "https://www.torn.com/images/items/" +
+            `${itemId}/small.png`
+        );
+    }
+
+    function removeMarker(
+        key
+    ) {
+        const marker =
+            state.markers
+                .get(
+                    key
+                );
+
+        if (!marker) {
+            return;
+        }
+
+        try {
+            marker.remove?.();
+        } catch {
+            try {
+                getTorn()
+                    ?.map
+                    ?.lmap
+                    ?.removeLayer?.(
+                        marker
+                    );
+            } catch {
+                // Ignore cleanup errors.
+            }
+        }
+
+        state.markers.delete(
+            key
+        );
+    }
+
+    function clearMarkers() {
+        for (
+            const key of
+            [
+                ...state
+                    .markers
+                    .keys(),
+            ]
+        ) {
+            removeMarker(
+                key
+            );
+        }
 
         state.detectedCount =
             0;
     }
 
-    function stopObserver() {
-        if (
-            state.observer
-        ) {
-            state.observer
-                .disconnect();
+    function createMarker(
+        item,
+        latLng
+    ) {
+        const torn =
+            getTorn();
 
-            state.observer =
-                null;
-        }
-
-        state.observedMap =
-            null;
-    }
-
-    function startObserver() {
-        const map =
-            getMap();
-
-        if (!map) {
-            stopObserver();
-
-            return false;
-        }
+        const leaflet =
+            getLeaflet();
 
         if (
-            state.observer &&
-            state.observedMap ===
-                map
+            !torn ||
+            !leaflet
         ) {
-            return true;
+            return null;
         }
 
-        stopObserver();
+        const imageUrl =
+            getItemImageUrl(
+                item.itemId
+            );
 
-        state.observedMap =
-            map;
+        const icon =
+            leaflet.divIcon({
+                className:
+                    "tactic-city-item-map-marker",
 
-        state.observer =
-            new MutationObserver(
-                mutations => {
-                    if (
-                        !state.enabled
-                    ) {
-                        return;
-                    }
-
-                    let shouldRefresh =
-                        false;
-
-                    for (
-                        const mutation of
-                        mutations
-                    ) {
-                        if (
-                            mutation.type !==
-                            "childList"
-                        ) {
-                            continue;
+                html:
+                    `
+                    <div class="tactic-city-item-map-marker-inner">
+                        ${
+                            imageUrl
+                                ? `<img src="${imageUrl}" alt="">`
+                                : ""
                         }
+                    </div>
+                    `,
 
-                        if (
-                            mutation.addedNodes
-                                .length >
-                            0 ||
-                            mutation.removedNodes
-                                .length >
-                            0
-                        ) {
-                            shouldRefresh =
-                                true;
+                iconSize: [
+                    MARKER_SIZE,
+                    MARKER_SIZE,
+                ],
 
-                            break;
-                        }
-                    }
+                iconAnchor: [
+                    MARKER_SIZE /
+                        2,
+                    MARKER_SIZE /
+                        2,
+                ],
+            });
 
-                    if (
-                        shouldRefresh
-                    ) {
-                        applyHighlights();
-                    }
+        const marker =
+            leaflet.marker(
+                latLng,
+                {
+                    icon,
+
+                    interactive:
+                        true,
+
+                    keyboard:
+                        false,
+
+                    zIndexOffset:
+                        30000,
                 }
             );
 
-        state.observer.observe(
-            map,
-            {
-                childList:
-                    true,
-
-                subtree:
-                    true,
-            }
+        marker.addTo(
+            torn.map.lmap
         );
 
-        return true;
+        const element =
+            marker
+                .getElement?.();
+
+        if (element) {
+            /*
+             * Torn's City item handling recognizes this class/data
+             * shape. We are only making the existing target larger.
+             */
+            element.classList.add(
+                "city-item"
+            );
+
+            if (
+                item.itemId
+            ) {
+                element.dataset.id =
+                    String(
+                        item.itemId
+                    );
+
+                element.dataset.itemId =
+                    String(
+                        item.itemId
+                    );
+            }
+
+            if (
+                item.rowId
+            ) {
+                element.dataset.entryId =
+                    item.rowId;
+            }
+
+            /*
+             * Some Torn model versions expose the encoded pickup
+             * token directly. Preserve it when available.
+             */
+            const td =
+                item.raw
+                    ?.td;
+
+            if (
+                typeof td ===
+                "string" &&
+                td
+            ) {
+                element.dataset.td =
+                    td;
+            }
+
+            element.title =
+                item.title;
+        }
+
+        return marker;
     }
 
-    function refresh() {
+    function syncMarkers() {
+        state.lastRefreshAt =
+            Date.now();
+
         if (
-            !state.enabled
+            !state.enabled ||
+            !runtimeReady()
         ) {
-            removeHighlights();
+            clearMarkers();
 
             return [];
         }
 
-        const map =
-            getMap();
+        const items =
+            getItems();
 
-        if (!map) {
-            stopObserver();
+        const activeKeys =
+            new Set(
+                items.map(
+                    item =>
+                        item.key
+                )
+            );
 
-            state.detectedCount =
-                0;
-
-            return [];
+        for (
+            const key of
+            [
+                ...state
+                    .markers
+                    .keys(),
+            ]
+        ) {
+            if (
+                !activeKeys.has(
+                    key
+                )
+            ) {
+                removeMarker(
+                    key
+                );
+            }
         }
 
-        startObserver();
+        for (
+            const item of
+            items
+        ) {
+            const latLng =
+                getLatLng(
+                    item
+                );
 
-        return applyHighlights();
+            if (!latLng) {
+                continue;
+            }
+
+            const existing =
+                state.markers
+                    .get(
+                        item.key
+                    );
+
+            if (existing) {
+                existing
+                    .setLatLng?.(
+                        latLng
+                    );
+
+                continue;
+            }
+
+            const marker =
+                createMarker(
+                    item,
+                    latLng
+                );
+
+            if (
+                marker
+            ) {
+                state.markers.set(
+                    item.key,
+                    marker
+                );
+            }
+        }
+
+        state.detectedCount =
+            state.markers
+                .size;
+
+        return items;
+    }
+
+    function stopWatcher() {
+        if (
+            state.timerId !==
+            null
+        ) {
+            globalThis.clearInterval(
+                state.timerId
+            );
+
+            state.timerId =
+                null;
+        }
+
+        clearMarkers();
+    }
+
+    function startWatcher() {
+        if (
+            state.timerId !==
+            null
+        ) {
+            return;
+        }
+
+        syncMarkers();
+
+        state.timerId =
+            globalThis.setInterval(
+                syncMarkers,
+                POLL_INTERVAL_MS
+            );
     }
 
     function setEnabled(
@@ -239,11 +772,9 @@
         if (
             state.enabled
         ) {
-            refresh();
+            startWatcher();
         } else {
-            stopObserver();
-
-            removeHighlights();
+            stopWatcher();
         }
 
         logger?.info(
@@ -253,59 +784,9 @@
                     state.enabled,
 
                 detectedCount:
-                    state.detectedCount,
+                    state
+                        .detectedCount,
             }
-        );
-    }
-
-    function ensurePageLifecycle() {
-        /*
-         * Torn can replace the City map DOM during navigation.
-         * Recheck periodically so the observer follows the new map.
-         */
-        globalThis.setInterval(
-            () => {
-                if (
-                    !state.enabled
-                ) {
-                    return;
-                }
-
-                const map =
-                    getMap();
-
-                if (
-                    !map
-                ) {
-                    stopObserver();
-
-                    state.detectedCount =
-                        0;
-
-                    return;
-                }
-
-                if (
-                    state.observedMap !==
-                    map
-                ) {
-                    refresh();
-
-                    return;
-                }
-
-                const currentCount =
-                    getItems()
-                        .length;
-
-                if (
-                    currentCount !==
-                    state.detectedCount
-                ) {
-                    applyHighlights();
-                }
-            },
-            1000
         );
     }
 
@@ -319,13 +800,10 @@
             return;
         }
 
-        /*
-         * Refresh state whenever Tools renders.
-         */
         if (
             state.enabled
         ) {
-            refresh();
+            syncMarkers();
         }
 
         components.clearElement(
@@ -490,8 +968,6 @@
         );
     }
 
-    ensurePageLifecycle();
-
     const section = {
         id:
             SECTION_ID,
@@ -515,7 +991,8 @@
 
         setEnabled,
 
-        refresh,
+        refresh:
+            syncMarkers,
 
         inspect() {
             return {
@@ -528,47 +1005,26 @@
                 enabled:
                     state.enabled,
 
-                observerActive:
-                    Boolean(
-                        state.observer
-                    ),
+                watcherActive:
+                    state.timerId !==
+                    null,
 
-                mapPresent:
-                    Boolean(
-                        getMap()
-                    ),
+                runtimeReady:
+                    runtimeReady(),
 
                 detectedCount:
                     state.detectedCount,
 
+                modelItemCount:
+                    getItems()
+                        .length,
+
                 lastRefreshAt:
                     state.lastRefreshAt,
 
-                highlightedItems:
-                    getItems()
-                        .filter(
-                            item =>
-                                item.classList
-                                    .contains(
-                                        HIGHLIGHT_CLASS
-                                    )
-                        )
-                        .map(
-                            item => ({
-                                itemId:
-                                    item.dataset
-                                        ?.itemId ||
-                                    null,
-
-                                entryId:
-                                    item.dataset
-                                        ?.entryId ||
-                                    null,
-
-                                className:
-                                    item.className,
-                            })
-                        ),
+                markerCount:
+                    state.markers
+                        .size,
             };
         },
     };
