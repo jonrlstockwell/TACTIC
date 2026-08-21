@@ -199,22 +199,22 @@
 //
 //
 // ============================================================
-// BAZAAR APPLICATION
+// TOOLS APPLICATION
 // ============================================================
 //
-// Bazaar application shell. Individual Bazaar sections must
+// Tools application shell. Individual Tool sections must
 // load after this file.
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/tools/index.js?v=1
 //
 //
 // ============================================================
-// BAZAAR SECTIONS
-// Must load after the Bazaar application shell.
+// TOOL SECTIONS
+// Must load after the Tools application shell.
 // ============================================================
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/bazaar-listing.js?v=2
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/bazaar/sections/city-item-finder.js?v=9
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/tools/sections/bazaar-listing.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/tools/sections/city-item-finder.js?v=9
 //
 //
 // ============================================================
