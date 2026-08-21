@@ -724,6 +724,145 @@
         updateStatusDisplay();
     }
 
+    function findNativeItemElement(
+        item
+    ) {
+        const selectors =
+            [];
+
+        if (
+            item.rowId
+        ) {
+            const entryId =
+                toBase36(
+                    item.rowId
+                );
+
+            selectors.push(
+                `.city-item[data-entry-id="${entryId}"]`,
+                `[data-entry-id="${entryId}"]`
+            );
+        }
+
+        if (
+            item.itemId
+        ) {
+            const itemId =
+                String(
+                    item.itemId
+                );
+
+            selectors.push(
+                `.city-item[data-item-id="${itemId}"]`,
+                `.city-item[data-id="${itemId}"]`
+            );
+        }
+
+        for (
+            const selector of
+            selectors
+        ) {
+            const candidates =
+                document.querySelectorAll(
+                    selector
+                );
+
+            for (
+                const candidate of
+                candidates
+            ) {
+                /*
+                 * Ignore our own enlarged marker.
+                 * We only want Torn's original collectible.
+                 */
+                if (
+                    candidate.classList
+                        ?.contains(
+                            "tactic-city-item-map-marker"
+                        ) ||
+                    candidate.closest?.(
+                        ".tactic-city-item-map-marker"
+                    )
+                ) {
+                    continue;
+                }
+
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    function forwardPickupClick(
+        item,
+        event
+    ) {
+        const nativeElement =
+            findNativeItemElement(
+                item
+            );
+
+        if (
+            !nativeElement
+        ) {
+            logger?.warn(
+                "City Item Finder could not locate Torn native collectible",
+                {
+                    itemId:
+                        item.itemId,
+
+                    rowId:
+                        item.rowId,
+
+                    title:
+                        item.title,
+                }
+            );
+
+            return;
+        }
+
+        /*
+         * Prevent our Leaflet marker from also treating
+         * the click as a map interaction.
+         */
+        event?.originalEvent
+            ?.preventDefault?.();
+
+        event?.originalEvent
+            ?.stopPropagation?.();
+
+        logger?.debug(
+            "City Item Finder forwarding pickup click",
+            {
+                itemId:
+                    item.itemId,
+
+                rowId:
+                    item.rowId,
+
+                nativeElement,
+            }
+        );
+
+        /*
+         * Let Torn's own collectible element handle pickup.
+         * This preserves Torn's validation, request handling,
+         * animation, inventory update, and item removal.
+         */
+        nativeElement.click();
+
+        /*
+         * Refresh shortly afterward so our enlarged marker
+         * disappears once Torn updates territoryUserItems.
+         */
+        globalThis.setTimeout(
+            syncMarkers,
+            250
+        );
+    }
+
     function createMarker(
         item,
         latLng
@@ -794,6 +933,16 @@
 
         marker.addTo(
             torn.map.lmap
+        );
+
+        marker.on(
+            "click",
+            event => {
+                forwardPickupClick(
+                    item,
+                    event
+                );
+            }
         );
 
         const element =
