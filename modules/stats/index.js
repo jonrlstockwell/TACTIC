@@ -261,6 +261,9 @@
 
                 factionUpgrades:
                     data?.factionUpgrades,
+
+                userPerks:
+                    data?.userPerks,
             });
 
         const plan =

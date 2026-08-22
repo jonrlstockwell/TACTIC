@@ -229,9 +229,209 @@
         return bonuses;
     }
 
+    function getPerkTrainingBonuses(
+        userPerks
+    ) {
+        const result = {
+            strength:
+                0,
+
+            defense:
+                0,
+
+            speed:
+                0,
+
+            dexterity:
+                0,
+
+            sources: {
+                education:
+                    0,
+
+                faction:
+                    0,
+
+                property:
+                    0,
+
+                book:
+                    0,
+
+                job:
+                    0,
+
+                other:
+                    0,
+            },
+        };
+
+        const perks =
+            userPerks?.perks;
+
+        if (
+            !perks ||
+            typeof perks !==
+                "object"
+        ) {
+            return result;
+        }
+
+        const statKeys =
+            [
+                "strength",
+                "defense",
+                "speed",
+                "dexterity",
+            ];
+
+        function parsePercent(
+            text
+        ) {
+            const match =
+                String(
+                    text || ""
+                ).match(
+                    /([0-9]+(?:\.[0-9]+)?)%/
+                );
+
+            return match
+                ? Number(
+                    match[1]
+                )
+                : 0;
+        }
+
+        function applyEntry(
+            entry,
+            source
+        ) {
+            const text =
+                String(
+                    entry || ""
+                ).toLowerCase();
+
+            if (
+                !text.includes(
+                    "gym gains"
+                )
+            ) {
+                return;
+            }
+
+            const percent =
+                parsePercent(
+                    text
+                );
+
+            if (
+                !Number.isFinite(
+                    percent
+                ) ||
+                percent <= 0
+            ) {
+                return;
+            }
+
+            let matchedStat =
+                false;
+
+            for (
+                const statKey of
+                statKeys
+            ) {
+                if (
+                    text.includes(
+                        statKey
+                    )
+                ) {
+                    result[
+                        statKey
+                    ] +=
+                        percent;
+
+                    matchedStat =
+                        true;
+                }
+            }
+
+            /*
+             * Generic "+X% gym gains" applies to every stat.
+             */
+            if (
+                !matchedStat
+            ) {
+                for (
+                    const statKey of
+                    statKeys
+                ) {
+                    result[
+                        statKey
+                    ] +=
+                        percent;
+                }
+            }
+
+            if (
+                result.sources[
+                    source
+                ] !== undefined
+            ) {
+                result.sources[
+                    source
+                ] +=
+                    percent;
+            } else {
+                result.sources
+                    .other +=
+                    percent;
+            }
+        }
+
+        const sourceKeys =
+            [
+                "education",
+                "faction",
+                "property",
+                "book",
+                "job",
+            ];
+
+        for (
+            const source of
+            sourceKeys
+        ) {
+            const entries =
+                perks[
+                    source
+                ];
+
+            if (
+                !Array.isArray(
+                    entries
+                )
+            ) {
+                continue;
+            }
+
+            for (
+                const entry of
+                entries
+            ) {
+                applyEntry(
+                    entry,
+                    source
+                );
+            }
+        }
+
+        return result;
+    }
+
     function getTrainingModifiers({
         stat,
         factionUpgrades,
+        userPerks,
     } = {}) {
         const statKey =
             normalizeStatKey(
@@ -244,6 +444,9 @@
                     null,
 
                 steadfastPercent:
+                    0,
+
+                perkPercent:
                     0,
 
                 totalPercent:
@@ -266,24 +469,39 @@
                 ]
             ) || 0;
 
+        const perkBonuses =
+            getPerkTrainingBonuses(
+                userPerks
+            );
+
+        const perkPercent =
+            Number(
+                perkBonuses[
+                    statKey
+                ]
+            ) || 0;
+
         /*
-         * Additional training bonuses will be added here later:
+         * user/perks already includes faction gym bonuses.
          *
-         * educationPercent
-         * companyPercent
-         * bookPercent
-         * temporaryPercent
-         * etc.
+         * Therefore, when userPerks is available, use it as the
+         * authoritative total and do not add Steadfast again.
          */
+        const hasPerkData =
+            !!userPerks?.perks;
 
         const totalPercent =
-            steadfastPercent;
+            hasPerkData
+                ? perkPercent
+                : steadfastPercent;
 
         return {
             stat:
                 statKey,
 
             steadfastPercent,
+
+            perkPercent,
 
             totalPercent,
 
@@ -293,6 +511,10 @@
                     totalPercent /
                     100
                 ),
+
+            sources:
+                perkBonuses
+                    .sources,
         };
     }
 
@@ -834,6 +1056,7 @@
             calculateGain,
             determineGymAvailability,
             getSteadfastBonuses,
+            getPerkTrainingBonuses,
             getTrainingModifiers,
             rankGyms,
             planGoal,
