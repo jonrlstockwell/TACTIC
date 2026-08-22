@@ -1513,6 +1513,7 @@
                     },
                 }
             )
+        );
 
         const happinessCard =
             createElement(
@@ -1590,6 +1591,7 @@
                     },
                 }
             )
+        );
 
         bars.append(
             energyCard,
