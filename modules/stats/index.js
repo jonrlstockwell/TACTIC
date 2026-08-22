@@ -46,9 +46,15 @@
     const logger =
         TACTIC.services?.logger;
 
-    if (!repository) {
+    const training =
+        TACTIC.services?.training;
+
+    if (
+        !repository ||
+        !training
+    ) {
         console.error(
-            "[TACTIC Stats] Stats Repository unavailable."
+            "[TACTIC Stats] Stats Repository or Training service unavailable."
         );
 
         return;
@@ -107,6 +113,38 @@
         }
 
         return "Unknown";
+    }
+
+    function formatCompactNumber(
+        value
+    ) {
+        const number =
+            Number(
+                value
+            );
+
+        if (
+            !Number.isFinite(
+                number
+            )
+        ) {
+            return "—";
+        }
+
+        return new Intl
+            .NumberFormat(
+                "en-US",
+                {
+                    notation:
+                        "compact",
+
+                    maximumFractionDigits:
+                        2,
+                }
+            )
+            .format(
+                number
+            );
     }
 
     function createElement(
@@ -211,6 +249,36 @@
                   )
                 : 0;
 
+        const happiness =
+            Number(
+                data?.bars?.happy?.current
+            ) || 0;
+
+        const plan =
+            goal > current
+                ? training.planGoal({
+                    stat:
+                        key,
+
+                    currentStat:
+                        current,
+
+                    targetStat:
+                        goal,
+
+                    happiness,
+
+                    gyms:
+                        data?.gyms || [],
+
+                    activeGym:
+                        data?.activeGym,
+
+                    trainingMultiplier:
+                        1,
+                })
+                : null;
+
         const card =
             createElement(
                 "div",
@@ -305,7 +373,7 @@
                 "div",
                 {
                     text:
-                        `Modifier: ${stat?.modifier ?? "—"}`,
+                        `Combat bonus: +${stat?.modifier ?? 0}%`,
 
                     styles: {
                         opacity:
@@ -449,6 +517,118 @@
             progressFill
         );
 
+        let plannerBlock =
+            null;
+
+        if (
+            plan?.recommendation
+        ) {
+            const recommendation =
+                plan.recommendation;
+
+            plannerBlock =
+                createElement(
+                    "div",
+                    {
+                        styles: {
+                            width:
+                                "100%",
+
+                            marginTop:
+                                "4px",
+
+                            paddingTop:
+                                "7px",
+
+                            borderTop:
+                                "1px solid rgba(255,255,255,.08)",
+
+                            display:
+                                "grid",
+
+                            gap:
+                                "3px",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                );
+
+            plannerBlock.append(
+                createElement(
+                    "div",
+                    
+                        text:
+                            "TRAINING PLAN",
+
+                        styles: {
+                            fontSize:
+                                "10px",
+
+                            fontWeight:
+                                "700",
+
+                            opacity:
+                                ".55",
+
+                            letterSpacing:
+                                ".07em",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            recommendation
+                                .gymName,
+
+                        styles: {
+                            fontSize:
+                                "13px",
+
+                            fontWeight:
+                                "700",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `~${formatCompactNumber(recommendation.gainPerTrain)} / train`,
+
+                        styles: {
+                            fontSize:
+                                "11px",
+
+                            opacity:
+                                ".8",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `${formatNumber(plan.estimatedTrains)} trains • ${formatNumber(plan.estimatedEnergy)} E`,
+
+                        styles: {
+                            fontSize:
+                                "11px",
+
+                            opacity:
+                                ".8",
+                        },
+                    }
+                )
+            );
+        }
+
         card.append(
             title,
             currentRow,
@@ -457,6 +637,12 @@
             progressText,
             progressTrack
         );
+
+        if (plannerBlock) {
+            card.appendChild(
+                plannerBlock
+            );
+        }
 
         return card;
     }
