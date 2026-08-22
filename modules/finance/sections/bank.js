@@ -1328,11 +1328,11 @@
                 label:
                     "Highest APR",
             },
-
-            const selectedStrategy =
-                financeRepository
-                    .getInvestmentStrategy();
         ];
+
+        const selectedStrategy =
+            financeRepository
+                .getInvestmentStrategy();
 
         for (
             const strategy of
@@ -1354,8 +1354,7 @@
 
             option.selected =
                 strategy.value ===
-                financeRepository
-                    .getInvestmentStrategy();
+                selectedStrategy;
 
             select.appendChild(
                 option
