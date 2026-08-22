@@ -1881,7 +1881,7 @@
              * When Stats is opened, refresh immediately if the
              * repository data is missing or already stale.
              *
-             * Otherwise the normal 60-second cycle takes over.
+             * Otherwise the normal automatic refresh cycle takes over.
              */
             if (
                 data.apiKeyConfigured &&
