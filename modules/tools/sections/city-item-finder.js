@@ -704,6 +704,189 @@
         );
     }
 
+    function findNativeItemLayer(
+        item,
+        latLng
+    ) {
+        const torn =
+            getTorn();
+
+        const layers =
+            Object.values(
+                torn?.map?.lmap?._layers ||
+                {}
+            );
+
+        const MAX_DISTANCE_METERS =
+            0.5;
+
+        for (
+            const layer of
+            layers
+        ) {
+            if (
+                !layer ||
+                typeof layer.getLatLng !==
+                    "function"
+            ) {
+                continue;
+            }
+
+            /*
+             * Skip our own enlarged TACTIC marker.
+             */
+            const element =
+                layer.getElement?.() ||
+                layer._icon ||
+                null;
+
+            if (
+                element?.classList
+                    ?.contains(
+                        "tactic-city-item-map-marker"
+                    )
+            ) {
+                continue;
+            }
+
+            let layerLatLng =
+                null;
+
+            try {
+                layerLatLng =
+                    layer.getLatLng();
+            } catch {
+                continue;
+            }
+
+            if (
+                !layerLatLng ||
+                typeof layerLatLng.distanceTo !==
+                    "function"
+            ) {
+                continue;
+            }
+
+            const distance =
+                layerLatLng.distanceTo(
+                    latLng
+                );
+
+            if (
+                distance >
+                MAX_DISTANCE_METERS
+            ) {
+                continue;
+            }
+
+            /*
+             * Torn's native city-item layer has its
+             * own Leaflet click handler.
+             */
+            if (
+                !Array.isArray(
+                    layer._events?.click
+                ) ||
+                layer._events.click.length ===
+                    0
+            ) {
+                continue;
+            }
+
+            return layer;
+        }
+
+        return null;
+    }
+
+    function collectItem(
+        item,
+        latLng
+    ) {
+        const nativeLayer =
+            findNativeItemLayer(
+                item,
+                latLng
+            );
+
+        if (!nativeLayer) {
+            logger?.warn(
+                "City Item Finder could not locate Torn native item layer",
+                {
+                    itemId:
+                        item.itemId,
+
+                    rowId:
+                        item.rowId,
+
+                    title:
+                        item.title,
+                }
+            );
+
+            return false;
+        }
+
+        try {
+            nativeLayer.fire(
+                "click"
+            );
+
+            /*
+             * Torn handles the actual collection.
+             * Remove TACTIC's enlarged marker immediately.
+             */
+            removeMarker(
+                item.key
+            );
+
+            state.detectedCount =
+                state.markers.size;
+
+            updateStatusDisplay();
+
+            logger?.debug(
+                "City Item Finder forwarded pickup to Torn native layer",
+                {
+                    itemId:
+                        item.itemId,
+
+                    rowId:
+                        item.rowId,
+
+                    title:
+                        item.title,
+
+                    nativeLeafletId:
+                        nativeLayer
+                            ._leaflet_id,
+                }
+            );
+
+            return true;
+        } catch (
+            error
+        ) {
+            logger?.warn(
+                "City Item Finder failed to trigger Torn native item layer",
+                {
+                    itemId:
+                        item.itemId,
+
+                    rowId:
+                        item.rowId,
+
+                    title:
+                        item.title,
+
+                    error,
+                }
+            );
+
+            return false;
+        }
+    }
+
     function clearMarkers() {
         for (
             const key of
@@ -722,145 +905,6 @@
             0;
 
         updateStatusDisplay();
-    }
-
-    function findNativeItemElement(
-        item
-    ) {
-        const selectors =
-            [];
-
-        if (
-            item.rowId
-        ) {
-            const entryId =
-                toBase36(
-                    item.rowId
-                );
-
-            selectors.push(
-                `.city-item[data-entry-id="${entryId}"]`,
-                `[data-entry-id="${entryId}"]`
-            );
-        }
-
-        if (
-            item.itemId
-        ) {
-            const itemId =
-                String(
-                    item.itemId
-                );
-
-            selectors.push(
-                `.city-item[data-item-id="${itemId}"]`,
-                `.city-item[data-id="${itemId}"]`
-            );
-        }
-
-        for (
-            const selector of
-            selectors
-        ) {
-            const candidates =
-                document.querySelectorAll(
-                    selector
-                );
-
-            for (
-                const candidate of
-                candidates
-            ) {
-                /*
-                 * Ignore our own enlarged marker.
-                 * We only want Torn's original collectible.
-                 */
-                if (
-                    candidate.classList
-                        ?.contains(
-                            "tactic-city-item-map-marker"
-                        ) ||
-                    candidate.closest?.(
-                        ".tactic-city-item-map-marker"
-                    )
-                ) {
-                    continue;
-                }
-
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
-    function forwardPickupClick(
-        item,
-        event
-    ) {
-        const nativeElement =
-            findNativeItemElement(
-                item
-            );
-
-        if (
-            !nativeElement
-        ) {
-            logger?.warn(
-                "City Item Finder could not locate Torn native collectible",
-                {
-                    itemId:
-                        item.itemId,
-
-                    rowId:
-                        item.rowId,
-
-                    title:
-                        item.title,
-                }
-            );
-
-            return;
-        }
-
-        /*
-         * Prevent our Leaflet marker from also treating
-         * the click as a map interaction.
-         */
-        event?.originalEvent
-            ?.preventDefault?.();
-
-        event?.originalEvent
-            ?.stopPropagation?.();
-
-        logger?.debug(
-            "City Item Finder forwarding pickup click",
-            {
-                itemId:
-                    item.itemId,
-
-                rowId:
-                    item.rowId,
-
-                nativeElement,
-            }
-        );
-
-        /*
-         * Let Torn's own collectible element handle pickup.
-         * This preserves Torn's validation, request handling,
-         * animation, inventory update, and item removal.
-         */
-        nativeElement.click();
-
-        /*
-         * Refresh shortly afterward so our enlarged marker
-         * disappears once Torn updates territoryUserItems.
-         */
-        globalThis.setTimeout(
-            syncMarkers,
-            250
-        );
     }
 
     function createMarker(
@@ -938,9 +982,15 @@
         marker.on(
             "click",
             event => {
-                forwardPickupClick(
+                event?.originalEvent
+                    ?.preventDefault?.();
+
+                event?.originalEvent
+                    ?.stopPropagation?.();
+
+                collectItem(
                     item,
-                    event
+                    latLng
                 );
             }
         );
