@@ -141,7 +141,7 @@
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=1
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=1
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/stats/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/stats/index.js?v=2
 //
 // Finance funding-source refresh persists across Torn navigation.
 //

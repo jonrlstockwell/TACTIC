@@ -105,6 +105,9 @@
 
         factionUpgrades:
             null,
+
+        userPerks:
+            null,
     };
 
     function clone(
@@ -370,6 +373,25 @@
         }
     }
 
+    async function loadUserPerks() {
+        try {
+            return await apiRequest(
+                "/v2/user/perks"
+            );
+        } catch (error) {
+            logger?.warn(
+                "User perks unavailable",
+                {
+                    message:
+                        error?.message ||
+                        String(error),
+                }
+            );
+
+            return null;
+        }
+    }
+
     async function refresh() {
         if (state.loading) {
             return inspect();
@@ -395,6 +417,7 @@
                 userResponse,
                 gymResponse,
                 factionUpgradesResponse,
+                userPerksResponse,
             ] =
                 await Promise.all([
                     apiRequest(
@@ -406,6 +429,8 @@
                     ),
 
                     loadFactionUpgrades(),
+
+                    loadUserPerks(),
                 ]);
 
             console.group(
@@ -477,6 +502,11 @@
                     factionUpgradesResponse
                 );
 
+            state.userPerks =
+                clone(
+                    userPerksResponse
+                );
+
             state.loadedAt =
                 Date.now();
 
@@ -500,6 +530,10 @@
                     factionUpgrades:
                         state
                             .factionUpgrades,
+
+                    userPerks:
+                        state
+                            .userPerks,
 
                     loadedAt:
                         state
@@ -586,6 +620,11 @@
                 cached.factionUpgrades
             );
 
+        state.userPerks =
+            clone(
+                cached.userPerks
+            );
+
         state.loadedAt =
             Number.isFinite(
                 cached.loadedAt
@@ -632,6 +671,12 @@
                 clone(
                     state
                         .factionUpgrades
+                ),
+
+            userPerks:
+                clone(
+                    state
+                        .userPerks
                 ),
 
             goals:
