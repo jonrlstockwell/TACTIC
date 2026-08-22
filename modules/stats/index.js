@@ -281,7 +281,7 @@
                 "div",
                 {
                     text:
-                        `Training modifier: ${stat?.modifier ?? "—"}`
+                        `Training modifier: ${stat?.modifier ?? "—"}`,
 
                     styles: {
                         opacity:
