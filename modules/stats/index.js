@@ -41,12 +41,18 @@
         300;
 
     const AUTO_REFRESH_MS =
-        60 * 1000;
+        15 * 1000;
 
     const AUTO_REFRESH_STALE_MS =
         30 * 1000;
 
+    const LIVE_BAR_TICK_MS =
+        1000;
+
     let autoRefreshTimer =
+        null;
+
+    let liveBarTimer =
         null;
 
     let autoRefreshInFlight =
@@ -757,6 +763,89 @@
         }
     }
 
+    function projectBarValue(
+        bar,
+        loadedAt
+    ) {
+        const current =
+            Number(
+                bar?.current
+            );
+
+        const maximum =
+            Number(
+                bar?.maximum
+            );
+
+        const increment =
+            Number(
+                bar?.increment
+            );
+
+        const intervalSeconds =
+            Number(
+                bar?.interval
+            );
+
+        const tickSeconds =
+            Number(
+                bar?.tick_time
+            );
+
+        if (
+            !Number.isFinite(current) ||
+            !Number.isFinite(maximum) ||
+            !Number.isFinite(increment) ||
+            !Number.isFinite(intervalSeconds) ||
+            !Number.isFinite(tickSeconds) ||
+            !Number.isFinite(loadedAt)
+        ) {
+            return current;
+        }
+
+        if (
+            current >= maximum
+        ) {
+            return maximum;
+        }
+
+        const elapsedSeconds =
+            Math.max(
+                0,
+                (
+                    Date.now() -
+                    loadedAt
+                ) / 1000
+            );
+
+        let ticks =
+            0;
+
+        if (
+            elapsedSeconds >=
+            tickSeconds
+        ) {
+            ticks =
+                1 +
+                Math.floor(
+                    (
+                        elapsedSeconds -
+                        tickSeconds
+                    ) /
+                    intervalSeconds
+                );
+        }
+
+        return Math.min(
+            maximum,
+            current +
+                (
+                    ticks *
+                    increment
+                )
+        );
+    }
+
     function stopAutoRefresh() {
         if (
             autoRefreshTimer !==
@@ -770,8 +859,124 @@
                 null;
         }
 
+        if (
+            liveBarTimer !==
+            null
+        ) {
+            globalThis.clearInterval(
+                liveBarTimer
+            );
+
+            liveBarTimer =
+                null;
+        }
+
         autoRefreshContainer =
             null;
+    }
+
+    function updateLiveBars(
+        container
+    ) {
+        if (
+            !container ||
+            !container.isConnected
+        ) {
+            return;
+        }
+
+        const data =
+            repository.inspect();
+
+        const energy =
+            data?.bars?.energy;
+
+        const happiness =
+            data?.bars?.happy;
+
+        const energyValue =
+            container.querySelector(
+                ".tactic-stats-energy-value"
+            );
+
+        const happinessValue =
+            container.querySelector(
+                ".tactic-stats-happiness-value"
+            );
+
+        if (
+            energyValue &&
+            energy
+        ) {
+            const projectedEnergy =
+                projectBarValue(
+                    energy,
+                    data.loadedAt
+                );
+
+            energyValue.textContent =
+                `${formatNumber(projectedEnergy)} / ${formatNumber(energy.maximum)}`;
+        }
+
+        if (
+            happinessValue &&
+            happiness
+        ) {
+            const projectedHappiness =
+                projectBarValue(
+                    happiness,
+                    data.loadedAt
+                );
+
+            happinessValue.textContent =
+                `${formatNumber(projectedHappiness)} / ${formatNumber(happiness.maximum)}`;
+        }
+    }
+
+    function startLiveBars(
+        container
+    ) {
+        if (
+            liveBarTimer !==
+            null
+        ) {
+            globalThis.clearInterval(
+                liveBarTimer
+            );
+        }
+
+        updateLiveBars(
+            container
+        );
+
+        liveBarTimer =
+            globalThis.setInterval(
+                () => {
+                    if (
+                        !container ||
+                        !container.isConnected
+                    ) {
+                        if (
+                            liveBarTimer !==
+                            null
+                        ) {
+                            globalThis.clearInterval(
+                                liveBarTimer
+                            );
+
+                            liveBarTimer =
+                                null;
+                        }
+
+                        return;
+                    }
+
+                    updateLiveBars(
+                        container
+                    );
+                },
+                LIVE_BAR_TICK_MS
+            );
     }
 
     async function runAutoRefresh(
@@ -1293,6 +1498,9 @@
                     text:
                         `${formatNumber(energy?.current)} / ${formatNumber(energy?.maximum)}`,
 
+                    className:
+                        "tactic-stats-energy-value",
+
                     styles: {
                         fontSize:
                             "16px",
@@ -1305,7 +1513,6 @@
                     },
                 }
             )
-        );
 
         const happinessCard =
             createElement(
@@ -1368,6 +1575,9 @@
                     text:
                         `${formatNumber(happy?.current)} / ${formatNumber(happy?.maximum)}`,
 
+                    className:
+                        "tactic-stats-happiness-value",
+
                     styles: {
                         fontSize:
                             "16px",
@@ -1380,7 +1590,6 @@
                     },
                 }
             )
-        );
 
         bars.append(
             energyCard,
@@ -1650,6 +1859,10 @@
                 );
 
             startAutoRefresh(
+                container
+            );
+
+            startLiveBars(
                 container
             );
 
