@@ -1693,6 +1693,7 @@
                 "Stats module destroyed"
             );
         },
+    });
 
     logger?.info(
         "Stats module loaded"
