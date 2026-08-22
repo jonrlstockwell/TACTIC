@@ -558,7 +558,7 @@
             plannerBlock.append(
                 createElement(
                     "div",
-                    
+                    {
                         text:
                             "TRAINING PLAN",
 
