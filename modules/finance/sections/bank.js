@@ -1328,6 +1328,10 @@
                 label:
                     "Highest APR",
             },
+
+            const selectedStrategy =
+                financeRepository
+                    .getInvestmentStrategy();
         ];
 
         for (
@@ -1350,7 +1354,8 @@
 
             option.selected =
                 strategy.value ===
-                bank.strategy;
+                financeRepository
+                    .getInvestmentStrategy();
 
             select.appendChild(
                 option
