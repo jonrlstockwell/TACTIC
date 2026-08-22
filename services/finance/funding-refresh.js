@@ -85,6 +85,14 @@
     const STEP_TIMEOUT_MS =
         12_000;
 
+    /*
+     * Even after a fresh value is detected, remain on the
+     * destination page long enough for Torn's page state and
+     * DOM helpers to stabilize.
+     */
+    const MIN_STEP_DWELL_MS =
+        1_500;
+
     const START_DELAY_MS =
         700;
 
@@ -231,6 +239,41 @@
                     resolve,
                     milliseconds
                 )
+        );
+    }
+
+    function getSnapshotReadAt(
+        snapshot
+    ) {
+        if (
+            Number.isFinite(
+                snapshot?.lastLiveReadAt
+            )
+        ) {
+            return snapshot.lastLiveReadAt;
+        }
+
+        return null;
+    }
+
+    function isFreshSnapshot(
+        snapshot,
+        stepStartedAt
+    ) {
+        const lastLiveReadAt =
+            getSnapshotReadAt(
+                snapshot
+            );
+
+        return (
+            Number.isFinite(
+                lastLiveReadAt
+            ) &&
+            Number.isFinite(
+                stepStartedAt
+            ) &&
+            lastLiveReadAt >=
+                stepStartedAt
         );
     }
 
@@ -404,8 +447,28 @@
     function buildSnapshotResult(
         step,
         snapshot,
-        status
+        status,
+        options = {}
     ) {
+        const stepStartedAt =
+            Number.isFinite(
+                options.stepStartedAt
+            )
+                ? options.stepStartedAt
+                : null;
+
+        const verifiedAt =
+            Number.isFinite(
+                options.verifiedAt
+            )
+                ? options.verifiedAt
+                : null;
+
+        const lastLiveReadAt =
+            getSnapshotReadAt(
+                snapshot
+            );
+
         return {
             status,
 
@@ -438,6 +501,35 @@
             source:
                 snapshot?.source ||
                 null,
+
+            /*
+             * Freshness audit information.
+             */
+            freshRead:
+                isFreshSnapshot(
+                    snapshot,
+                    stepStartedAt
+                ),
+
+            stepStartedAt,
+
+            lastLiveReadAt,
+
+            verifiedAt,
+
+            durationMs:
+                Number.isFinite(
+                    stepStartedAt
+                ) &&
+                Number.isFinite(
+                    verifiedAt
+                )
+                    ? Math.max(
+                        0,
+                        verifiedAt -
+                            stepStartedAt
+                    )
+                    : null,
         };
     }
 
@@ -445,32 +537,53 @@
         step,
         session
     ) {
-        const startedAt =
-            Date.now();
+        const stepStartedAt =
+            Number.isFinite(
+                session.stepStartedAt
+            )
+                ? session.stepStartedAt
+                : Date.now();
+
+        session.stepStartedAt =
+            stepStartedAt;
+
+        saveSession(
+            session
+        );
+
+        const deadline =
+            stepStartedAt +
+            STEP_TIMEOUT_MS;
 
         while (
-            Date.now() -
-                startedAt <
-            STEP_TIMEOUT_MS
+            Date.now() <
+            deadline
         ) {
             try {
                 const refresh =
                     financeRepository[
-                        step
-                            .refreshMethod
+                        step.refreshMethod
                     ];
+
+                /*
+                 * Force the repository to read the currently loaded
+                 * Torn page instead of relying on its previous state.
+                 */
+                let refreshedSnapshot =
+                    null;
 
                 if (
                     typeof refresh ===
                     "function"
                 ) {
-                    refresh(
-                        "funding-source-refresh",
-                        {
-                            forceNotify:
-                                true,
-                        }
-                    );
+                    refreshedSnapshot =
+                        refresh(
+                            "funding-source-refresh",
+                            {
+                                forceNotify:
+                                    true,
+                            }
+                        );
                 }
 
                 const getter =
@@ -479,34 +592,174 @@
                     ];
 
                 const snapshot =
-                    typeof getter ===
-                    "function"
-                        ? getter()
-                        : null;
-
-                if (
-                    step.isReady(
-                        snapshot
-                    )
-                ) {
-                    recordResult(
-                        session,
-                        step.id,
-                        buildSnapshotResult(
-                            step,
-                            snapshot,
-                            "updated"
-                        )
+                    refreshedSnapshot ||
+                    (
+                        typeof getter ===
+                        "function"
+                            ? getter()
+                            : null
                     );
 
-                    return {
-                        success:
-                            true,
+                const ready =
+                    step.isReady(
+                        snapshot
+                    );
 
+                const fresh =
+                    isFreshSnapshot(
                         snapshot,
-                    };
+                        stepStartedAt
+                    );
+
+                if (
+                    ready &&
+                    fresh
+                ) {
+                    /*
+                     * We now know the repository performed a live read
+                     * after this refresh step began.
+                     *
+                     * Keep the page open for at least 1.5 seconds total
+                     * so Torn's SPA/DOM state has time to stabilize.
+                     */
+                    const elapsed =
+                        Date.now() -
+                        stepStartedAt;
+
+                    const dwellRemaining =
+                        Math.max(
+                            0,
+                            MIN_STEP_DWELL_MS -
+                                elapsed
+                        );
+
+                    if (
+                        dwellRemaining >
+                        0
+                    ) {
+                        await delay(
+                            dwellRemaining
+                        );
+                    }
+
+                    /*
+                     * Perform one final read after stabilization.
+                     */
+                    let finalSnapshot =
+                        snapshot;
+
+                    try {
+                        const finalRefresh =
+                            financeRepository[
+                                step
+                                    .refreshMethod
+                            ];
+
+                        if (
+                            typeof finalRefresh ===
+                            "function"
+                        ) {
+                            finalSnapshot =
+                                finalRefresh(
+                                    "funding-source-refresh-final-verification",
+                                    {
+                                        forceNotify:
+                                            true,
+                                    }
+                                ) ||
+                                finalSnapshot;
+                        }
+                    } catch (
+                        error
+                    ) {
+                        logger?.warn(
+                            `Funding refresh final verification failed for ${step.label}`,
+                            {
+                                step:
+                                    step.id,
+
+                                error,
+                            }
+                        );
+                    }
+
+                    const verifiedAt =
+                        Date.now();
+
+                    const finalReady =
+                        step.isReady(
+                            finalSnapshot
+                        );
+
+                    const finalFresh =
+                        isFreshSnapshot(
+                            finalSnapshot,
+                            stepStartedAt
+                        );
+
+                    if (
+                        finalReady &&
+                        finalFresh
+                    ) {
+                        recordResult(
+                            session,
+                            step.id,
+                            buildSnapshotResult(
+                                step,
+                                finalSnapshot,
+                                "verified",
+                                {
+                                    stepStartedAt,
+                                    verifiedAt,
+                                }
+                            )
+                        );
+
+                        logger?.info(
+                            `Finance funding source verified: ${step.label}`,
+                            {
+                                step:
+                                    step.id,
+
+                                value:
+                                    finalSnapshot
+                                        ?.value ??
+                                    null,
+
+                                lastLiveReadAt:
+                                    finalSnapshot
+                                        ?.lastLiveReadAt ??
+                                    null,
+
+                                durationMs:
+                                    verifiedAt -
+                                    stepStartedAt,
+                            }
+                        );
+
+                        return {
+                            success:
+                                true,
+
+                            fresh:
+                                true,
+
+                            snapshot:
+                                finalSnapshot,
+
+                            stepStartedAt,
+
+                            verifiedAt,
+
+                            durationMs:
+                                verifiedAt -
+                                stepStartedAt,
+                        };
+                    }
                 }
-            } catch (error) {
+            } catch (
+                error
+            ) {
                 logger?.warn(
                     `Funding refresh could not read ${step.label}`,
                     {
@@ -536,18 +789,48 @@
             // Ignore.
         }
 
+        const timedOutAt =
+            Date.now();
+
         recordResult(
             session,
             step.id,
             buildSnapshotResult(
                 step,
                 finalSnapshot,
-                "timeout"
+                "timeout",
+                {
+                    stepStartedAt,
+                    verifiedAt:
+                        timedOutAt,
+                }
             )
+        );
+
+        logger?.warn(
+            `Finance funding source could not be freshly verified: ${step.label}`,
+            {
+                step:
+                    step.id,
+
+                lastLiveReadAt:
+                    finalSnapshot
+                        ?.lastLiveReadAt ??
+                    null,
+
+                stepStartedAt,
+
+                durationMs:
+                    timedOutAt -
+                    stepStartedAt,
+            }
         );
 
         return {
             success:
+                false,
+
+            fresh:
                 false,
 
             reason:
@@ -555,6 +838,15 @@
 
             snapshot:
                 finalSnapshot,
+
+            stepStartedAt,
+
+            verifiedAt:
+                timedOutAt,
+
+            durationMs:
+                timedOutAt -
+                stepStartedAt,
         };
     }
 
@@ -699,6 +991,19 @@
                     step.routeId
                 )
             ) {
+                /*
+                 * Persist this before leaving the current page.
+                 *
+                 * The next userscript instance can then prove that the
+                 * destination-page snapshot was read after navigation began.
+                 */
+                session.stepStartedAt =
+                    Date.now();
+
+                saveSession(
+                    session
+                );
+
                 logger?.info(
                     `Finance funding refresh opening ${step.label}`,
                     {
@@ -739,6 +1044,12 @@
                     session.stepIndex +=
                         1;
 
+                    session.currentStep =
+                        null;
+
+                    session.stepStartedAt =
+                        null;
+
                     saveSession(
                         session
                     );
@@ -753,6 +1064,19 @@
                 }
 
                 return true;
+            }
+
+            if (
+                !Number.isFinite(
+                    session.stepStartedAt
+                )
+            ) {
+                session.stepStartedAt =
+                    Date.now();
+
+                saveSession(
+                    session
+                );
             }
 
             logger?.info(
@@ -772,6 +1096,9 @@
                 1;
 
             session.currentStep =
+                null;
+
+            session.stepStartedAt =
                 null;
 
             saveSession(
@@ -889,6 +1216,9 @@
                 0,
 
             currentStep:
+                null,
+
+            stepStartedAt:
                 null,
 
             results: {
