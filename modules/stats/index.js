@@ -40,6 +40,21 @@
     const MODULE_ORDER =
         300;
 
+    const AUTO_REFRESH_MS =
+        60 * 1000;
+
+    const AUTO_REFRESH_STALE_MS =
+        30 * 1000;
+
+    let autoRefreshTimer =
+        null;
+
+    let autoRefreshInFlight =
+        false;
+
+    let autoRefreshContainer =
+        null;
+
     const repository =
         TACTIC.repositories?.stats;
 
@@ -678,6 +693,181 @@
         }
 
         return card;
+    }
+
+    function captureGoalDrafts(
+        container
+    ) {
+        const drafts = {};
+
+        if (!container) {
+            return drafts;
+        }
+
+        for (
+            const input of
+            container.querySelectorAll(
+                "[data-stat-goal]"
+            )
+        ) {
+            drafts[
+                input.dataset
+                    .statGoal
+            ] =
+                input.value;
+        }
+
+        return drafts;
+    }
+
+    function restoreGoalDrafts(
+        container,
+        drafts
+    ) {
+        if (
+            !container ||
+            !drafts
+        ) {
+            return;
+        }
+
+        for (
+            const input of
+            container.querySelectorAll(
+                "[data-stat-goal]"
+            )
+        ) {
+            const key =
+                input.dataset
+                    .statGoal;
+
+            if (
+                Object.prototype
+                    .hasOwnProperty
+                    .call(
+                        drafts,
+                        key
+                    )
+            ) {
+                input.value =
+                    drafts[
+                        key
+                    ];
+            }
+        }
+    }
+
+    function stopAutoRefresh() {
+        if (
+            autoRefreshTimer !==
+            null
+        ) {
+            globalThis.clearInterval(
+                autoRefreshTimer
+            );
+
+            autoRefreshTimer =
+                null;
+        }
+
+        autoRefreshContainer =
+            null;
+    }
+
+    async function runAutoRefresh(
+        container
+    ) {
+        if (
+            autoRefreshInFlight ||
+            !container ||
+            !container.isConnected
+        ) {
+            return;
+        }
+
+        const data =
+            repository.inspect();
+
+        if (
+            !data
+                .apiKeyConfigured
+        ) {
+            return;
+        }
+
+        autoRefreshInFlight =
+            true;
+
+        const drafts =
+            captureGoalDrafts(
+                container
+            );
+
+        try {
+            await repository
+                .refresh();
+
+            if (
+                container.isConnected
+            ) {
+                await render(
+                    container
+                );
+
+                restoreGoalDrafts(
+                    container,
+                    drafts
+                );
+            }
+        } catch (error) {
+            /*
+             * Automatic refresh failures should not destroy the
+             * currently displayed Stats page.
+             *
+             * The manual Refresh Data button remains available
+             * for explicit retries.
+             */
+            logger?.warn(
+                "Stats automatic refresh failed",
+                {
+                    message:
+                        error?.message ||
+                        String(error),
+                }
+            );
+        } finally {
+            autoRefreshInFlight =
+                false;
+        }
+    }
+
+    function startAutoRefresh(
+        container
+    ) {
+        stopAutoRefresh();
+
+        autoRefreshContainer =
+            container;
+
+        autoRefreshTimer =
+            globalThis.setInterval(
+                () => {
+                    if (
+                        !autoRefreshContainer ||
+                        !autoRefreshContainer
+                            .isConnected
+                    ) {
+                        stopAutoRefresh();
+
+                        return;
+                    }
+
+                    void runAutoRefresh(
+                        autoRefreshContainer
+                    );
+                },
+                AUTO_REFRESH_MS
+            );
     }
 
     async function render(
@@ -1454,17 +1644,55 @@
         async render(
             container
         ) {
-            return render(
+            const result =
+                await render(
+                    container
+                );
+
+            startAutoRefresh(
                 container
             );
+
+            const data =
+                repository.inspect();
+
+            const age =
+                data.loadedAt
+                    ? Date.now() -
+                    data.loadedAt
+                    : Infinity;
+
+            /*
+             * When Stats is opened, refresh immediately if the
+             * repository data is missing or already stale.
+             *
+             * Otherwise the normal 60-second cycle takes over.
+             */
+            if (
+                data.apiKeyConfigured &&
+                age >
+                    AUTO_REFRESH_STALE_MS
+            ) {
+                globalThis.setTimeout(
+                    () => {
+                        void runAutoRefresh(
+                            container
+                        );
+                    },
+                    0
+                );
+            }
+
+            return result;
         },
 
         destroy() {
+            stopAutoRefresh();
+
             logger?.info(
                 "Stats module destroyed"
             );
         },
-    });
 
     logger?.info(
         "Stats module loaded"
