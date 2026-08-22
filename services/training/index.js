@@ -511,21 +511,94 @@
             target -
             current;
 
-        /*
-         * Phase 1 estimate:
-         *
-         * Gain rises as the stat increases, so using the current
-         * gain for the entire journey is intentionally conservative.
-         */
-        const estimatedTrains =
-            Math.ceil(
-                remaining /
-                best.gainPerTrain
-            );
+        let simulatedStat =
+            current;
+
+        let estimatedTrains =
+            0;
+
+        let totalGain =
+            0;
+
+        const maxSimulatedTrains =
+            1000000;
+
+        while (
+            simulatedStat <
+                target &&
+            estimatedTrains <
+                maxSimulatedTrains
+        ) {
+            const gain =
+                calculateGain({
+                    stat:
+                        statKey,
+
+                    currentStat:
+                        simulatedStat,
+
+                    happiness,
+
+                    gymModifier:
+                        best.gymModifier,
+
+                    energy:
+                        best.energyCost,
+
+                    trainingMultiplier,
+                });
+
+            if (
+                !Number.isFinite(
+                    gain
+                ) ||
+                gain <= 0
+            ) {
+                break;
+            }
+
+            simulatedStat +=
+                gain;
+
+            totalGain +=
+                gain;
+
+            estimatedTrains +=
+                1;
+        }
 
         const estimatedEnergy =
             estimatedTrains *
             best.energyCost;
+
+        const finalGainPerTrain =
+            calculateGain({
+                stat:
+                    statKey,
+
+                currentStat:
+                    simulatedStat,
+
+                happiness,
+
+                gymModifier:
+                    best.gymModifier,
+
+                energy:
+                    best.energyCost,
+
+                trainingMultiplier,
+            });
+
+        const averageGainPerTrain =
+            estimatedTrains > 0
+                ? totalGain /
+                estimatedTrains
+                : 0;
+        
+        const simulationComplete =
+            simulatedStat >=
+            target;
 
         return {
             stat:
@@ -543,6 +616,18 @@
             estimatedTrains,
 
             estimatedEnergy,
+
+            startingGainPerTrain:
+                best.gainPerTrain,
+
+            averageGainPerTrain,
+
+            finalGainPerTrain,
+
+            projectedFinalStat:
+                simulatedStat,
+
+            simulationComplete,
 
             rankings,
         };

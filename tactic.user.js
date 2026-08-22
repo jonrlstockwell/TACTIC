@@ -154,7 +154,7 @@
 //
 // Gym gain calculations and stat-goal planning.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/training/index.js?v=1000
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/training/index.js?v=1001
 //
 //
 // ============================================================
