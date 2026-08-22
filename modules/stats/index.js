@@ -158,7 +158,7 @@
                         "pointer",
 
                     padding:
-                        "8px 12px",
+                        "7px 10px",
 
                     borderRadius:
                         "5px",
@@ -171,6 +171,9 @@
 
                     color:
                         "inherit",
+
+                    width:
+                        "100%",
                 },
             }
         );
@@ -214,7 +217,7 @@
                 {
                     styles: {
                         padding:
-                            "14px 16px",
+                            "11px 12px",
 
                         border:
                             "1px solid rgba(255,255,255,.12)",
@@ -229,7 +232,7 @@
                             "grid",
 
                         gap:
-                            "9px",
+                            "6px",
 
                         minWidth:
                             "0",
@@ -249,7 +252,7 @@
                             "700",
 
                         fontSize:
-                            "14px",
+                            "13px",
                     },
                 }
             );
@@ -265,13 +268,19 @@
 
                     styles: {
                         fontSize:
-                            "22px",
+                            "18px",
 
                         fontWeight:
                             "700",
 
                         lineHeight:
                             "1.1",
+
+                        whiteSpace:
+                            "nowrap",
+
+                        letterSpacing:
+                            "-0.02em",
                     },
                 }
             );
@@ -281,7 +290,7 @@
                 "div",
                 {
                     text:
-                        `Training modifier: ${stat?.modifier ?? "—"}`,
+                        `Modifier: ${stat?.modifier ?? "—"}`,
 
                     styles: {
                         opacity:
@@ -313,7 +322,7 @@
                 : "";
 
         goalInput.placeholder =
-            "Enter target stat";
+            "Target";
 
         goalInput.dataset.statGoal =
             key;
@@ -328,7 +337,7 @@
                     "border-box",
 
                 padding:
-                    "9px 10px",
+                    "7px 8px",
 
                 borderRadius:
                     "5px",
@@ -343,7 +352,7 @@
                     "inherit",
 
                 fontSize:
-                    "14px",
+                    "12px",
             }
         );
 
@@ -372,7 +381,7 @@
                 {
                     styles: {
                         height:
-                            "5px",
+                            "4px",
 
                         borderRadius:
                             "999px",
@@ -641,13 +650,13 @@
                 {
                     styles: {
                         display:
-                            "flex",
+                            "grid",
+
+                        gridTemplateColumns:
+                            "repeat(2, minmax(0, 1fr))",
 
                         gap:
                             "8px",
-
-                        flexWrap:
-                            "wrap",
                     },
                 }
             );
@@ -751,13 +760,16 @@
 
                     styles: {
                         padding:
-                            "9px",
+                            "8px 9px",
 
                         border:
                             "1px solid rgba(255,255,255,.1)",
 
                         borderRadius:
                             "6px",
+
+                        fontSize:
+                            "12px",
                     },
                 }
             ),
@@ -770,13 +782,16 @@
 
                     styles: {
                         padding:
-                            "9px",
+                            "8px 9px",
 
                         border:
                             "1px solid rgba(255,255,255,.1)",
 
                         borderRadius:
                             "6px",
+
+                        fontSize:
+                            "12px",
                     },
                 }
             )
@@ -798,7 +813,7 @@
                             "3px",
 
                         padding:
-                            "10px 12px",
+                            "8px 10px",
 
                         border:
                             "1px solid rgba(255,255,255,.1)",
@@ -845,7 +860,7 @@
 
                     styles: {
                         fontSize:
-                            "15px",
+                            "14px",
 
                         fontWeight:
                             "600",
