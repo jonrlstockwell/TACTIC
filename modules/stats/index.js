@@ -217,7 +217,7 @@
                 {
                     styles: {
                         padding:
-                            "11px 12px",
+                            "12px",
 
                         border:
                             "1px solid rgba(255,255,255,.12)",
@@ -229,10 +229,19 @@
                             "rgba(255,255,255,.035)",
 
                         display:
-                            "grid",
+                            "flex",
+
+                        flexDirection:
+                            "column",
+
+                        alignItems:
+                            "center",
+
+                        textAlign:
+                            "center",
 
                         gap:
-                            "6px",
+                            "7px",
 
                         minWidth:
                             "0",
@@ -252,7 +261,10 @@
                             "700",
 
                         fontSize:
-                            "13px",
+                            "16px",
+
+                        textAlign:
+                            "center",
                     },
                 }
             );
@@ -268,7 +280,7 @@
 
                     styles: {
                         fontSize:
-                            "18px",
+                            "16px",
 
                         fontWeight:
                             "700",
@@ -281,6 +293,9 @@
 
                         letterSpacing:
                             "-0.02em",
+
+                        textAlign:
+                            "center",
                     },
                 }
             );
@@ -297,7 +312,10 @@
                             ".7",
 
                         fontSize:
-                            "11px",
+                            "12px",
+
+                        textAlign:
+                            "center",
                     },
                 }
             );
@@ -353,6 +371,9 @@
 
                 fontSize:
                     "12px",
+
+                textAlign:
+                    "center",
             }
         );
 
@@ -367,10 +388,16 @@
 
                     styles: {
                         fontSize:
-                            "11px",
+                            "12px",
 
                         opacity:
                             ".75",
+
+                        textAlign:
+                            "center",
+
+                        width:
+                            "100%",
                     },
                 }
             );
@@ -380,6 +407,9 @@
                 "div",
                 {
                     styles: {
+                        width:
+                            "100%",
+
                         height:
                             "4px",
 
@@ -461,7 +491,41 @@
                 "div"
             );
 
-        header.append(
+        const titleRow =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "flex",
+
+                        alignItems:
+                            "center",
+
+                        gap:
+                            "8px",
+                    },
+                }
+            );
+
+        const titleIcon =
+            createElement(
+                "span",
+                {
+                    text:
+                        "📊",
+
+                    styles: {
+                        fontSize:
+                            "18px",
+
+                        lineHeight:
+                            "1",
+                    },
+                }
+            );
+
+        const titleText =
             createElement(
                 "div",
                 {
@@ -476,7 +540,15 @@
                             "700",
                     },
                 }
-            ),
+            );
+
+        titleRow.append(
+            titleIcon,
+            titleText
+        );
+
+        header.append(
+            titleRow,
 
             createElement(
                 "div",
@@ -751,16 +823,13 @@
             data.bars
                 ?.happy;
 
-        bars.append(
+        const energyCard =
             createElement(
                 "div",
                 {
-                    text:
-                        `Energy: ${formatNumber(energy?.current)} / ${formatNumber(energy?.maximum)}`,
-
                     styles: {
                         padding:
-                            "8px 9px",
+                            "10px 8px",
 
                         border:
                             "1px solid rgba(255,255,255,.1)",
@@ -768,11 +837,146 @@
                         borderRadius:
                             "6px",
 
+                        display:
+                            "flex",
+
+                        flexDirection:
+                            "column",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "center",
+
+                        textAlign:
+                            "center",
+
+                        gap:
+                            "4px",
+                    },
+                }
+            );
+
+        energyCard.append(
+            createElement(
+                "div",
+                {
+                    text:
+                        "Energy:",
+
+                    styles: {
                         fontSize:
-                            "12px",
+                            "13px",
+
+                        fontWeight:
+                            "500",
+
+                        textAlign:
+                            "center",
                     },
                 }
             ),
+
+            createElement(
+                "div",
+                {
+                    text:
+                        `${formatNumber(energy?.current)} / ${formatNumber(energy?.maximum)}`,
+
+                    styles: {
+                        fontSize:
+                            "16px",
+
+                        fontWeight:
+                            "600",
+
+                        textAlign:
+                            "center",
+                    },
+                }
+            )
+        );
+
+        const happinessCard =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        padding:
+                            "10px 8px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.1)",
+
+                        borderRadius:
+                            "6px",
+
+                        display:
+                            "flex",
+
+                        flexDirection:
+                            "column",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "center",
+
+                        textAlign:
+                            "center",
+
+                        gap:
+                            "4px",
+                    },
+                }
+            );
+
+        happinessCard.append(
+            createElement(
+                "div",
+                {
+                    text:
+                        "Happiness:",
+
+                    styles: {
+                        fontSize:
+                            "13px",
+
+                        fontWeight:
+                            "500",
+
+                        textAlign:
+                            "center",
+                    },
+                }
+            ),
+
+            createElement(
+                "div",
+                {
+                    text:
+                        `${formatNumber(happy?.current)} / ${formatNumber(happy?.maximum)}`,
+
+                    styles: {
+                        fontSize:
+                            "16px",
+
+                        fontWeight:
+                            "600",
+
+                        textAlign:
+                            "center",
+                    },
+                }
+            )
+        );
+
+        bars.append(
+            energyCard,
+            happinessCard
+        );
 
             createElement(
                 "div",
@@ -807,13 +1011,25 @@
                 {
                     styles: {
                         display:
-                            "grid",
+                            "flex",
+
+                        flexDirection:
+                            "column",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "center",
+
+                        textAlign:
+                            "center",
 
                         gap:
-                            "3px",
+                            "4px",
 
                         padding:
-                            "8px 10px",
+                            "12px 10px",
 
                         border:
                             "1px solid rgba(255,255,255,.1)",
@@ -836,16 +1052,19 @@
 
                     styles: {
                         fontSize:
-                            "10px",
+                            "11px",
 
                         fontWeight:
                             "700",
 
                         opacity:
-                            ".55",
+                            ".65",
 
                         letterSpacing:
                             ".08em",
+
+                        textAlign:
+                            "center",
                     },
                 }
             ),
@@ -860,10 +1079,13 @@
 
                     styles: {
                         fontSize:
-                            "14px",
+                            "16px",
 
                         fontWeight:
-                            "600",
+                            "700",
+
+                        textAlign:
+                            "center",
                     },
                 }
             )
@@ -885,7 +1107,7 @@
                             "grid",
 
                         gridTemplateColumns:
-                            "1fr",
+                            "repeat(2, minmax(0, 1fr))",
 
                         gap:
                             "10px",
