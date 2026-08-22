@@ -719,14 +719,17 @@
                     "div",
                     {
                         text:
-                            `~${formatCompactNumber(recommendation.gainPerTrain)} / train`,
+                            `${formatCompactNumber(recommendation.gainPerTrain)} / train`,
 
                         styles: {
                             fontSize:
                                 "11px",
 
                             opacity:
-                                ".8",
+                                ".85",
+
+                            textAlign:
+                                "center",
                         },
                     }
                 ),
@@ -735,14 +738,58 @@
                     "div",
                     {
                         text:
-                            `${formatNumber(plan.estimatedTrains)} trains • ${formatNumber(plan.estimatedEnergy)} E`,
+                            `${formatNumber(plan.estimatedTrains)} trains`,
 
                         styles: {
                             fontSize:
                                 "11px",
 
                             opacity:
-                                ".8",
+                                ".85",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `${formatNumber(plan.estimatedEnergy)} E`,
+
+                        styles: {
+                            fontSize:
+                                "11px",
+
+                            opacity:
+                                ".85",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Natural Energy:",
+
+                        styles: {
+                            marginTop:
+                                "3px",
+
+                            fontSize:
+                                "10px",
+
+                            opacity:
+                                ".6",
+
+                            textAlign:
+                                "center",
                         },
                     }
                 ),
@@ -752,20 +799,23 @@
                     {
                         text:
                             naturalEnergyPlan
-                                ? `Natural energy: ~${formatDuration(naturalEnergyPlan.seconds)}`
-                                : "Natural energy: —",
+                                ? formatDuration(
+                                    naturalEnergyPlan.seconds
+                                )
+                                : "—",
 
                         styles: {
                             fontSize:
-                                "10px",
+                                "11px",
 
-                            opacity:
-                                ".6",
+                            fontWeight:
+                                "600",
+
+                            textAlign:
+                                "center",
                         },
                     }
                 )
-            );
-        }
 
         card.append(
             title,
