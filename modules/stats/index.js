@@ -513,7 +513,7 @@
                 "span",
                 {
                     text:
-                        "📊",
+                        "🏋️",
 
                     styles: {
                         fontSize:
