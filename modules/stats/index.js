@@ -365,13 +365,16 @@
                 ),
 
             energyDrinksPerDay:
-                Math.max(
-                    0,
-                    Math.round(
-                        Number(
-                            source
-                                .energyDrinksPerDay
-                        ) || 0
+                Math.min(
+                    12,
+                    Math.max(
+                        0,
+                        Math.round(
+                            Number(
+                                source
+                                    .energyDrinksPerDay
+                            ) || 0
+                        )
                     )
                 ),
 
@@ -394,12 +397,15 @@
                 ),
 
             fhcPerDay:
-                Math.max(
-                    0,
-                    Math.round(
-                        Number(
-                            source.fhcPerDay
-                        ) || 0
+                Math.min(
+                    4,
+                    Math.max(
+                        0,
+                        Math.round(
+                            Number(
+                                source.fhcPerDay
+                            ) || 0
+                        )
                     )
                 ),
         };
@@ -455,7 +461,7 @@
                     "rgba(0,0,0,.2)",
 
                 color:
-                    "inherit",
+                    "#fff",
 
                 fontSize:
                     "12px",
@@ -697,6 +703,12 @@
                 )
             );
 
+        xanaxSelect.style.backgroundColor =
+            "#1b1b1b";
+
+        xanaxSelect.style.color =
+            "#fff";
+
         for (
             const amount of
             [1, 2, 3]
@@ -711,6 +723,12 @@
 
             option.textContent =
                 String(amount);
+
+            option.style.backgroundColor =
+                "#1b1b1b";
+
+            option.style.color =
+                "#fff";
 
             xanaxSelect.appendChild(
                 option
@@ -832,6 +850,9 @@
         drinksQty.min =
             "0";
 
+        drinksQty.max =
+            "12";
+
         drinksQty.step =
             "1";
 
@@ -872,7 +893,7 @@
                 "div",
                 {
                     text:
-                        "Drinks per day",
+                        "Max drinks / day",
 
                     styles: {
                         fontSize:
@@ -925,10 +946,24 @@
         drinksQty.addEventListener(
             "input",
             () => {
+                const value =
+                    Math.min(
+                        12,
+                        Math.max(
+                            0,
+                            Math.round(
+                                Number(
+                                    drinksQty.value
+                                ) || 0
+                            )
+                        )
+                    );
+
+                drinksQty.value =
+                    String(value);
+
                 settings.energyDrinksPerDay =
-                    Number(
-                        drinksQty.value
-                    ) || 0;
+                    value;
 
                 settings =
                     savePlannerSettings(
@@ -1016,7 +1051,7 @@
                 "div",
                 {
                     text:
-                        "FHC per day",
+                        "Max FHC / day",
 
                     styles: {
                         fontSize:
@@ -1041,6 +1076,9 @@
 
         fhcQty.min =
             "0";
+
+        fhcQty.max =
+            "4";
 
         fhcQty.step =
             "1";
@@ -1072,10 +1110,24 @@
         fhcQty.addEventListener(
             "input",
             () => {
+                const value =
+                    Math.min(
+                        4,
+                        Math.max(
+                            0,
+                            Math.round(
+                                Number(
+                                    fhcQty.value
+                                ) || 0
+                            )
+                        )
+                    );
+
+                fhcQty.value =
+                    String(value);
+
                 settings.fhcPerDay =
-                    Number(
-                        fhcQty.value
-                    ) || 0;
+                    value;
 
                 settings =
                     savePlannerSettings(
