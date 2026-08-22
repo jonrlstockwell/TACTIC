@@ -978,29 +978,6 @@
             happinessCard
         );
 
-            createElement(
-                "div",
-                {
-                    text:
-                        `Happiness: ${formatNumber(happy?.current)} / ${formatNumber(happy?.maximum)}`,
-
-                    styles: {
-                        padding:
-                            "8px 9px",
-
-                        border:
-                            "1px solid rgba(255,255,255,.1)",
-
-                        borderRadius:
-                            "6px",
-
-                        fontSize:
-                            "12px",
-                    },
-                }
-            )
-        );
-
         root.appendChild(
             bars
         );
