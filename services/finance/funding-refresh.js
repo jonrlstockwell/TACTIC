@@ -96,6 +96,12 @@
     const START_DELAY_MS =
         700;
 
+    const OVERLAY_ID =
+        "tactic-finance-funding-refresh-overlay";
+
+    const COMPLETION_OVERLAY_MS =
+        4_000;
+
     const STEPS =
         Object.freeze([
             {
@@ -242,6 +248,391 @@
         );
     }
 
+    function formatMoney(
+        value
+    ) {
+        if (
+            !Number.isFinite(
+                value
+            )
+        ) {
+            return null;
+        }
+
+        return new Intl
+            .NumberFormat(
+                "en-US",
+                {
+                    style:
+                        "currency",
+
+                    currency:
+                        "USD",
+
+                    maximumFractionDigits:
+                        0,
+                }
+            )
+            .format(
+                value
+            );
+    }
+
+    function removeProgressOverlay() {
+        document
+            .getElementById(
+                OVERLAY_ID
+            )
+            ?.remove();
+    }
+
+    function getStepResult(
+        session,
+        step
+    ) {
+        return (
+            session?.results?.[
+                step.id
+            ] ||
+            null
+        );
+    }
+
+    function createProgressRow(
+        step,
+        session
+    ) {
+        const result =
+            getStepResult(
+                session,
+                step
+            );
+
+        const isCurrent =
+            session?.currentStep ===
+            step.id;
+
+        const row =
+            document.createElement(
+                "div"
+            );
+
+        row.style.display =
+            "grid";
+
+        row.style.gridTemplateColumns =
+            "22px 1fr auto";
+
+        row.style.alignItems =
+            "center";
+
+        row.style.gap =
+            "8px";
+
+        row.style.padding =
+            "5px 0";
+
+        const icon =
+            document.createElement(
+                "span"
+            );
+
+        const label =
+            document.createElement(
+                "span"
+            );
+
+        const value =
+            document.createElement(
+                "span"
+            );
+
+        label.textContent =
+            step.label;
+
+        label.style.fontWeight =
+            "600";
+
+        value.style.opacity =
+            "0.85";
+
+        value.style.textAlign =
+            "right";
+
+        if (
+            result?.status ===
+            "verified" &&
+            result?.freshRead ===
+            true
+        ) {
+            icon.textContent =
+                "✓";
+
+            const formatted =
+                formatMoney(
+                    result.value
+                );
+
+            value.textContent =
+                formatted ||
+                "Verified";
+        } else if (
+            result?.status ===
+                "timeout" ||
+            result?.status ===
+                "navigation-failed"
+        ) {
+            icon.textContent =
+                "⚠";
+
+            value.textContent =
+                result.status ===
+                "timeout"
+                    ? "Could not verify"
+                    : "Unavailable";
+        } else if (
+            isCurrent
+        ) {
+            icon.textContent =
+                "→";
+
+            value.textContent =
+                "Verifying...";
+        } else {
+            icon.textContent =
+                "○";
+
+            value.textContent =
+                "Pending";
+        }
+
+        row.append(
+            icon,
+            label,
+            value
+        );
+
+        return row;
+    }
+
+    function renderProgressOverlay(
+        session,
+        {
+            completed =
+                false,
+        } = {}
+    ) {
+        if (
+            !document.body
+        ) {
+            globalThis.setTimeout(
+                () => {
+                    renderProgressOverlay(
+                        session,
+                        {
+                            completed,
+                        }
+                    );
+                },
+                100
+            );
+
+            return;
+        }
+
+        removeProgressOverlay();
+
+        const overlay =
+            document.createElement(
+                "div"
+            );
+
+        overlay.id =
+            OVERLAY_ID;
+
+        overlay.style.position =
+            "fixed";
+
+        overlay.style.top =
+            "18px";
+
+        overlay.style.right =
+            "18px";
+
+        overlay.style.zIndex =
+            "2147483647";
+
+        overlay.style.width =
+            "340px";
+
+        overlay.style.maxWidth =
+            "calc(100vw - 36px)";
+
+        overlay.style.padding =
+            "14px 16px";
+
+        overlay.style.borderRadius =
+            "8px";
+
+        overlay.style.background =
+            "rgba(24, 26, 29, 0.97)";
+
+        overlay.style.border =
+            "1px solid rgba(255, 255, 255, 0.14)";
+
+        overlay.style.boxShadow =
+            "0 8px 28px rgba(0, 0, 0, 0.45)";
+
+        overlay.style.color =
+            "#f2f2f2";
+
+        overlay.style.fontFamily =
+            "Arial, Helvetica, sans-serif";
+
+        overlay.style.fontSize =
+            "13px";
+
+        overlay.style.lineHeight =
+            "1.35";
+
+        overlay.style.pointerEvents =
+            "none";
+
+        const title =
+            document.createElement(
+                "div"
+            );
+
+        title.textContent =
+            completed
+                ? "TACTIC • Funding Sources Updated"
+                : "TACTIC • Updating Funding Sources";
+
+        title.style.fontSize =
+            "14px";
+
+        title.style.fontWeight =
+            "700";
+
+        title.style.marginBottom =
+            "8px";
+
+        overlay.appendChild(
+            title
+        );
+
+        for (
+            const step of
+            STEPS
+        ) {
+            overlay.appendChild(
+                createProgressRow(
+                    step,
+                    session
+                )
+            );
+        }
+
+        const footer =
+            document.createElement(
+                "div"
+            );
+
+        footer.style.marginTop =
+            "8px";
+
+        footer.style.paddingTop =
+            "8px";
+
+        footer.style.borderTop =
+            "1px solid rgba(255, 255, 255, 0.10)";
+
+        footer.style.opacity =
+            "0.75";
+
+        footer.style.fontSize =
+            "12px";
+
+        const verifiedCount =
+            STEPS.filter(
+                step => {
+                    const result =
+                        getStepResult(
+                            session,
+                            step
+                        );
+
+                    return (
+                        result?.status ===
+                            "verified" &&
+                        result?.freshRead ===
+                            true
+                    );
+                }
+            ).length;
+
+        if (completed) {
+            footer.textContent =
+                `${verifiedCount} of ${STEPS.length} freshly verified`;
+        } else {
+            const currentNumber =
+                Number.isSafeInteger(
+                    session?.stepIndex
+                )
+                    ? Math.min(
+                        session.stepIndex +
+                            1,
+                        STEPS.length
+                    )
+                    : 1;
+
+            footer.textContent =
+                `Step ${currentNumber} of ${STEPS.length}`;
+        }
+
+        overlay.appendChild(
+            footer
+        );
+
+        document.body.appendChild(
+            overlay
+        );
+    }
+
+    function renderActiveProgress() {
+        const session =
+            readSession();
+
+        if (
+            !session ||
+            session.active !==
+                true
+        ) {
+            return;
+        }
+
+        renderProgressOverlay(
+            session
+        );
+    }
+
+    function showCompletionOverlay(
+        session
+    ) {
+        renderProgressOverlay(
+            session,
+            {
+                completed:
+                    true,
+            }
+        );
+
+        globalThis.setTimeout(
+            removeProgressOverlay,
+            COMPLETION_OVERLAY_MS
+        );
+    }
+
     function getSnapshotReadAt(
         snapshot
     ) {
@@ -308,8 +699,21 @@
             session
         );
 
+        if (
+            session?.active ===
+            true
+        ) {
+            globalThis.setTimeout(
+                () => {
+                    renderProgressOverlay(
+                        session
+                    );
+                },
+                0
+            );
+        }
+
         return session;
-    }
 
     function clearSession() {
         storage.remove(
@@ -888,6 +1292,10 @@
 
         clearSession();
 
+        showCompletionOverlay(
+            session
+        );
+
         logger?.info(
             "Finance funding source refresh completed",
             {
@@ -1340,6 +1748,60 @@
         };
     }
 
+    function restoreProgressOverlay() {
+        const session =
+            readSession();
+
+        if (
+            session?.active ===
+            true
+        ) {
+            renderProgressOverlay(
+                session
+            );
+
+            return;
+        }
+
+        const lastResult =
+            storage.get(
+                LAST_RESULT_KEY,
+                null
+            );
+
+        if (
+            lastResult?.status !==
+                "completed" ||
+            !Number.isFinite(
+                lastResult?.completedAt
+            )
+        ) {
+            return;
+        }
+
+        const age =
+            Date.now() -
+            lastResult.completedAt;
+
+        /*
+         * Only restore a completion message immediately following
+         * a funding refresh. Do not resurrect an old result during
+         * normal browsing later.
+         */
+        if (
+            age < 0 ||
+            age >
+                COMPLETION_OVERLAY_MS +
+                    3_000
+        ) {
+            return;
+        }
+
+        showCompletionOverlay(
+            lastResult
+        );
+    }
+
     registerBankRoute();
 
     TACTIC.services
@@ -1359,6 +1821,8 @@
      */
     globalThis.setTimeout(
         () => {
+            restoreProgressOverlay();
+
             if (isActive()) {
                 processSession();
             }

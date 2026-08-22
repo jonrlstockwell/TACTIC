@@ -145,7 +145,7 @@
 //
 // Finance funding-source refresh persists across Torn navigation.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/funding-refresh.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/funding-refresh.js?v=3
 //
 // ============================================================
 // USER INTERFACE
