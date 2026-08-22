@@ -131,7 +131,7 @@
 // ============================================================
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/index.js?v=4
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/advisor.js?v=9
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/advisor.js?v=10
 //
 //
 // ============================================================
@@ -143,6 +143,9 @@
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=20
 //
+// Finance funding-source refresh persists across Torn navigation.
+//
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/finance/funding-refresh.js?v=1
 //
 // ============================================================
 // USER INTERFACE
@@ -186,7 +189,7 @@
 // Finance application shell. Individual Finance sections must
 // load after this file.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=7
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/finance/index.js?v=8
 //
 //
 // ============================================================

@@ -139,6 +139,9 @@
             OPEN_TACTIC_MODULE:
                 "open-tactic-module",
 
+            REFRESH_FUNDING_SOURCES:
+                "refresh-funding-sources",
+
             NONE:
                 "none",
         });
@@ -1437,8 +1440,8 @@
                     action:
                         createAction(
                             ACTION_TYPES
-                                .OPEN_FINANCE_TAB,
-                            "overview",
+                                .REFRESH_FUNDING_SOURCES,
+                            null,
                             "Review Funding Sources"
                         ),
 
@@ -2002,8 +2005,8 @@
                     action:
                         createAction(
                             ACTION_TYPES
-                                .OPEN_FINANCE_TAB,
-                            "overview",
+                                .REFRESH_FUNDING_SOURCES,
+                            null,
                             "Review Funding Sources"
                         ),
 
@@ -2116,8 +2119,8 @@
                     action:
                         createAction(
                             ACTION_TYPES
-                                .OPEN_FINANCE_TAB,
-                            "overview",
+                                .REFRESH_FUNDING_SOURCES,
+                            null,
                             "Review Funding Sources"
                         ),
 

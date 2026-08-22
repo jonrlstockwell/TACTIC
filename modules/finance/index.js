@@ -139,6 +139,9 @@
     const financeAdvisor =
         services.financeAdvisor;
 
+    const financeFundingRefresh =
+        services.financeFundingRefresh;
+
     const financeRepository =
         TACTIC.repositories
             ?.finance ||
@@ -1448,6 +1451,48 @@
                         "finance-advisor-overview",
                 }
             );
+        }
+
+        if (
+            action.type ===
+            "refresh-funding-sources"
+        ) {
+            if (
+                !financeFundingRefresh ||
+                typeof financeFundingRefresh
+                    .start !==
+                    "function"
+            ) {
+                return {
+                    success:
+                        false,
+
+                    executed:
+                        false,
+
+                    reason:
+                        "funding-refresh-service-unavailable",
+                };
+            }
+
+            const result =
+                financeFundingRefresh
+                    .start();
+
+            return {
+                success:
+                    result?.success ===
+                    true,
+
+                executed:
+                    result?.started ===
+                    true,
+
+                action:
+                    action.type,
+
+                result,
+            };
         }
 
         if (
