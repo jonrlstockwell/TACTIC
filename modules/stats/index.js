@@ -72,6 +72,43 @@
         );
     }
 
+    function formatActiveGym(
+        activeGym
+    ) {
+        if (
+            activeGym === null ||
+            activeGym === undefined
+        ) {
+            return "Unknown";
+        }
+
+        if (
+            typeof activeGym ===
+            "string" ||
+            typeof activeGym ===
+            "number"
+        ) {
+            return String(
+                activeGym
+            );
+        }
+
+        if (
+            typeof activeGym ===
+            "object"
+        ) {
+            return (
+                activeGym.name ||
+                activeGym.title ||
+                activeGym.gym_name ||
+                activeGym.id ||
+                "Unknown"
+            );
+        }
+
+        return "Unknown";
+    }
+
     function createElement(
         tag,
         options = {}
@@ -177,7 +214,7 @@
                 {
                     styles: {
                         padding:
-                            "12px",
+                            "14px 16px",
 
                         border:
                             "1px solid rgba(255,255,255,.12)",
@@ -192,7 +229,10 @@
                             "grid",
 
                         gap:
-                            "7px",
+                            "9px",
+
+                        minWidth:
+                            "0",
                     },
                 }
             );
@@ -219,7 +259,20 @@
                 "div",
                 {
                     text:
-                        `Current: ${formatNumber(current)}`,
+                        formatNumber(
+                            current
+                        ),
+
+                    styles: {
+                        fontSize:
+                            "22px",
+
+                        fontWeight:
+                            "700",
+
+                        lineHeight:
+                            "1.1",
+                    },
                 }
             );
 
@@ -228,7 +281,7 @@
                 "div",
                 {
                     text:
-                        `API modifier: ${stat?.modifier ?? "—"}`,
+                        `Training modifier: ${stat?.modifier ?? "—"}`
 
                     styles: {
                         opacity:
@@ -260,7 +313,7 @@
                 : "";
 
         goalInput.placeholder =
-            "Set target";
+            "Enter target stat";
 
         goalInput.dataset.statGoal =
             key;
@@ -275,7 +328,7 @@
                     "border-box",
 
                 padding:
-                    "7px",
+                    "9px 10px",
 
                 borderRadius:
                     "5px",
@@ -288,6 +341,9 @@
 
                 color:
                     "inherit",
+
+                fontSize:
+                    "14px",
             }
         );
 
@@ -383,7 +439,7 @@
                             "grid",
 
                         gap:
-                            "14px",
+                            "12px",
 
                         padding:
                             "4px 0",
@@ -730,19 +786,76 @@
             bars
         );
 
-        root.appendChild(
+        const gymCard =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "3px",
+
+                        padding:
+                            "10px 12px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.1)",
+
+                        borderRadius:
+                            "6px",
+
+                        background:
+                            "rgba(255,255,255,.025)",
+                    },
+                }
+            );
+
+        gymCard.append(
             createElement(
                 "div",
                 {
                     text:
-                        `Active Gym: ${String(data.activeGym ?? "Unknown")}`,
+                        "ACTIVE GYM",
 
                     styles: {
+                        fontSize:
+                            "10px",
+
+                        fontWeight:
+                            "700",
+
                         opacity:
-                            ".8",
+                            ".55",
+
+                        letterSpacing:
+                            ".08em",
+                    },
+                }
+            ),
+
+            createElement(
+                "div",
+                {
+                    text:
+                        formatActiveGym(
+                            data.activeGym
+                        ),
+
+                    styles: {
+                        fontSize:
+                            "15px",
+
+                        fontWeight:
+                            "600",
                     },
                 }
             )
+        );
+
+        root.appendChild(
+            gymCard
         );
 
         const goals =
@@ -757,7 +870,7 @@
                             "grid",
 
                         gridTemplateColumns:
-                            "repeat(2, minmax(0, 1fr))",
+                            "1fr",
 
                         gap:
                             "10px",
