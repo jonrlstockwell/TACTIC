@@ -113,6 +113,171 @@
             : null;
     }
 
+    function getSteadfastBonuses(
+        factionUpgrades
+    ) {
+        const bonuses = {
+            strength:
+                0,
+
+            defense:
+                0,
+
+            speed:
+                0,
+
+            dexterity:
+                0,
+        };
+
+        const peaceBranches =
+            factionUpgrades
+                ?.upgrades
+                ?.peace;
+
+        if (
+            !Array.isArray(
+                peaceBranches
+            )
+        ) {
+            return bonuses;
+        }
+
+        const steadfast =
+            peaceBranches.find(
+                branch =>
+                    String(
+                        branch?.name || ""
+                    ).toLowerCase() ===
+                    "steadfast"
+            );
+
+        if (
+            !steadfast ||
+            !Array.isArray(
+                steadfast.upgrades
+            )
+        ) {
+            return bonuses;
+        }
+
+        for (
+            const upgrade of
+            steadfast.upgrades
+        ) {
+            const name =
+                String(
+                    upgrade?.name || ""
+                ).toLowerCase();
+
+            const ability =
+                String(
+                    upgrade?.ability || ""
+                ).toLowerCase();
+
+            const level =
+                Number(
+                    upgrade?.level
+                );
+
+            let statKey =
+                null;
+
+            for (
+                const candidate of
+                STAT_KEYS
+            ) {
+                if (
+                    name.includes(
+                        candidate
+                    ) ||
+                    ability.includes(
+                        candidate
+                    )
+                ) {
+                    statKey =
+                        candidate;
+
+                    break;
+                }
+            }
+
+            if (!statKey) {
+                continue;
+            }
+
+            /*
+             * Current Torn Steadfast entries expose the percentage
+             * as the upgrade level:
+             *
+             * Strength training X   -> level 10 -> +10%
+             * Defense training XVI  -> level 16 -> +16%
+             */
+            if (
+                Number.isFinite(
+                    level
+                ) &&
+                level >= 0
+            ) {
+                bonuses[
+                    statKey
+                ] =
+                    level;
+            }
+        }
+
+        return bonuses;
+    }
+
+    function getTrainingModifiers({
+        stat,
+        factionUpgrades,
+    } = {}) {
+        const statKey =
+            normalizeStatKey(
+                stat
+            );
+
+        if (!statKey) {
+            return {
+                stat:
+                    null,
+
+                steadfastPercent:
+                    0,
+
+                multiplier:
+                    1,
+            };
+        }
+
+        const steadfast =
+            getSteadfastBonuses(
+                factionUpgrades
+            );
+
+        const steadfastPercent =
+            Number(
+                steadfast[
+                    statKey
+                ]
+            ) || 0;
+
+        return {
+            stat:
+                statKey,
+
+            steadfastPercent,
+
+            multiplier:
+                1 +
+                (
+                    steadfastPercent /
+                    100
+                ),
+        };
+    }
+
     function calculateGain({
         stat,
         currentStat,
@@ -650,6 +815,8 @@
         Object.freeze({
             calculateGain,
             determineGymAvailability,
+            getSteadfastBonuses,
+            getTrainingModifiers,
             rankGyms,
             planGoal,
             inspect,

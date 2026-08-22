@@ -254,6 +254,15 @@
                 data?.bars?.happy?.current
             ) || 0;
 
+        const trainingModifiers =
+            training.getTrainingModifiers({
+                stat:
+                    key,
+
+                factionUpgrades:
+                    data?.factionUpgrades,
+            });
+
         const plan =
             goal > current
                 ? training.planGoal({
@@ -275,7 +284,8 @@
                         data?.activeGym,
 
                     trainingMultiplier:
-                        1,
+                        trainingModifiers
+                            .multiplier,
                 })
                 : null;
 
@@ -591,6 +601,26 @@
 
                             fontWeight:
                                 "700",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            trainingModifiers
+                                .steadfastPercent >
+                            0
+                                ? `Faction Steadfast: +${trainingModifiers.steadfastPercent}%`
+                                : "Faction Steadfast: none",
+
+                        styles: {
+                            fontSize:
+                                "10px",
+
+                            opacity:
+                                ".65",
                         },
                     }
                 ),
