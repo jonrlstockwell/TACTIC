@@ -142,7 +142,7 @@
 //
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/user/index.js?v=2
 // @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/finance/index.js?v=20
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/stats/index.js?v=2
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/repositories/stats/index.js?v=3
 //
 // Finance funding-source refresh persists across Torn navigation.
 //
@@ -208,7 +208,7 @@
 //
 // Battle stat overview, goals, and gym training tools.
 //
-// @require https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=11
+// @require https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=12
 //
 //
 // ============================================================
