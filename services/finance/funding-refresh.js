@@ -714,6 +714,7 @@
         }
 
         return session;
+    }
 
     function clearSession() {
         storage.remove(
