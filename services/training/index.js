@@ -246,6 +246,9 @@
                 steadfastPercent:
                     0,
 
+                totalPercent:
+                    0,
+
                 multiplier:
                     1,
             };
@@ -263,16 +266,31 @@
                 ]
             ) || 0;
 
+        /*
+         * Additional training bonuses will be added here later:
+         *
+         * educationPercent
+         * companyPercent
+         * bookPercent
+         * temporaryPercent
+         * etc.
+         */
+
+        const totalPercent =
+            steadfastPercent;
+
         return {
             stat:
                 statKey,
 
             steadfastPercent,
 
+            totalPercent,
+
             multiplier:
                 1 +
                 (
-                    steadfastPercent /
+                    totalPercent /
                     100
                 ),
         };

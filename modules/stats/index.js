@@ -610,10 +610,10 @@
                     {
                         text:
                             trainingModifiers
-                                .steadfastPercent >
+                                .totalPercent >
                             0
-                                ? `Faction Steadfast: +${trainingModifiers.steadfastPercent}%`
-                                : "Faction Steadfast: none",
+                                ? `Training bonus: +${trainingModifiers.totalPercent}%`
+                                : "Training bonus: none",
 
                         styles: {
                             fontSize:
