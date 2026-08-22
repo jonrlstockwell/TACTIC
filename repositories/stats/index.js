@@ -377,6 +377,44 @@
                     ),
                 ]);
 
+            console.group(
+                "[TACTIC STATS] Training Data Audit"
+            );
+
+            console.log(
+                "RAW USER RESPONSE:",
+                userResponse
+            );
+
+            console.log(
+                "RAW GYM RESPONSE:",
+                gymResponse
+            );
+
+            console.log(
+                "RAW BATTLE STATS:",
+                userResponse?.battlestats
+            );
+
+            console.log(
+                "RAW ACTIVE GYM:",
+                userResponse?.active_gym ??
+                userResponse?.gym ??
+                null
+            );
+
+            console.log(
+                "RAW BARS:",
+                userResponse?.bars
+            );
+
+            console.log(
+                "GYM CATALOG:",
+                gymResponse?.gyms
+            );
+
+            console.groupEnd();
+
             state.battlestats =
                 normalizeBattleStats(
                     userResponse
