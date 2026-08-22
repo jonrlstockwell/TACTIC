@@ -1211,6 +1211,18 @@
                 "cached-maturity-projection";
         }
 
+        /*
+         * A cached bank snapshot may have been created under a
+         * different recommendation strategy.
+         *
+         * The live bank rates can remain cached, but strategy-dependent
+         * analysis must always be regenerated from the current Finance
+         * Repository strategy.
+         */
+        cached.strategy =
+            repositoryState
+                .investmentStrategy;
+
         if (
             cached.pageSnapshot
         ) {
@@ -1219,6 +1231,35 @@
 
             cached.pageSnapshot.source =
                 "persistent-cache";
+
+            try {
+                cached.analysis =
+                    calculateBankAnalysis(
+                        cached.pageSnapshot
+                    );
+            } catch (error) {
+                metrics
+                    .bankRecommendationFailures +=
+                    1;
+
+                metrics.lastError =
+                    createErrorSnapshot(
+                        error
+                    );
+
+                logger?.warn(
+                    "Finance Repository could not recalculate cached Investment Bank analysis",
+                    {
+                        strategy:
+                            repositoryState
+                                .investmentStrategy,
+
+                        reason,
+
+                        error,
+                    }
+                );
+            }
         }
 
         return cached;
