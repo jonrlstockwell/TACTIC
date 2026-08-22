@@ -105,7 +105,7 @@
 
     if (
         !repository ||
-        !training
+        !training ||
         !storage
     ) {
         console.error(
@@ -843,7 +843,7 @@
         const drinkEnergy =
             stylePlannerField(
                 document.createElement(
-                    input"
+                    "input"
                 )
             );
 
