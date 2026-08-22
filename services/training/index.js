@@ -833,6 +833,113 @@
         return ranked;
     }
 
+    function estimateNaturalEnergyTime({
+        energyRequired,
+        currentEnergy,
+        energyIncrement,
+        energyInterval,
+    } = {}) {
+        const required =
+            Number(
+                energyRequired
+            );
+
+        const current =
+            Number(
+                currentEnergy
+            );
+
+        const increment =
+            Number(
+                energyIncrement
+            );
+
+        const interval =
+            Number(
+                energyInterval
+            );
+
+        if (
+            !Number.isFinite(required) ||
+            required <= 0
+        ) {
+            return {
+                energyRequired:
+                    0,
+
+                energyRemaining:
+                    0,
+
+                regenerationTicks:
+                    0,
+
+                seconds:
+                    0,
+            };
+        }
+
+        const usableEnergy =
+            Number.isFinite(current)
+                ? Math.max(
+                    0,
+                    current
+                )
+                : 0;
+
+        const energyRemaining =
+            Math.max(
+                0,
+                required -
+                    usableEnergy
+            );
+
+        if (
+            energyRemaining === 0
+        ) {
+            return {
+                energyRequired:
+                    required,
+
+                energyRemaining:
+                    0,
+
+                regenerationTicks:
+                    0,
+
+                seconds:
+                    0,
+            };
+        }
+
+        if (
+            !Number.isFinite(increment) ||
+            increment <= 0 ||
+            !Number.isFinite(interval) ||
+            interval <= 0
+        ) {
+            return null;
+        }
+
+        const regenerationTicks =
+            Math.ceil(
+                energyRemaining /
+                    increment
+            );
+
+        return {
+            energyRequired:
+                required,
+
+            energyRemaining,
+
+            regenerationTicks,
+
+            seconds:
+                regenerationTicks *
+                interval,
+        };
+    }
+
     function planGoal({
         stat,
         currentStat,
@@ -1058,6 +1165,7 @@
             getSteadfastBonuses,
             getPerkTrainingBonuses,
             getTrainingModifiers,
+            estimateNaturalEnergyTime,
             rankGyms,
             planGoal,
             inspect,

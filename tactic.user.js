@@ -154,7 +154,7 @@
 //
 // Gym gain calculations and stat-goal planning.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/training/index.js?v=4
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/training/index.js?v=5
 //
 //
 // ============================================================
@@ -217,7 +217,7 @@
 //
 // Battle stat overview, goals, and gym training tools.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=10
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=11
 //
 //
 // ============================================================

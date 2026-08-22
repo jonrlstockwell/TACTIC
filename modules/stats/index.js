@@ -99,6 +99,52 @@
         );
     }
 
+    function formatDuration(
+        seconds
+    ) {
+        const totalSeconds =
+            Math.max(
+                0,
+                Math.round(
+                    Number(seconds) || 0
+                )
+            );
+
+        const days =
+            Math.floor(
+                totalSeconds /
+                    86400
+            );
+
+        const hours =
+            Math.floor(
+                (
+                    totalSeconds %
+                    86400
+                ) /
+                    3600
+            );
+
+        const minutes =
+            Math.floor(
+                (
+                    totalSeconds %
+                    3600
+                ) /
+                    60
+            );
+
+        if (days > 0) {
+            return `${days}d ${hours}h`;
+        }
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        }
+
+        return `${minutes}m`;
+    }
+
     function formatActiveGym(
         activeGym
     ) {
@@ -310,6 +356,26 @@
                     trainingMultiplier:
                         trainingModifiers
                             .multiplier,
+                })
+                : null;
+
+        const energyBar =
+            data?.bars?.energy;
+
+        const naturalEnergyPlan =
+            plan?.estimatedEnergy > 0
+                ? training.estimateNaturalEnergyTime({
+                    energyRequired:
+                        plan.estimatedEnergy,
+
+                    currentEnergy:
+                        energyBar?.current,
+
+                    energyIncrement:
+                        energyBar?.increment,
+
+                    energyInterval:
+                        energyBar?.interval,
                 })
                 : null;
 
@@ -677,6 +743,24 @@
 
                             opacity:
                                 ".8",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            naturalEnergyPlan
+                                ? `Natural energy: ~${formatDuration(naturalEnergyPlan.seconds)}`
+                                : "Natural energy: —",
+
+                        styles: {
+                            fontSize:
+                                "10px",
+
+                            opacity:
+                                ".6",
                         },
                     }
                 )
