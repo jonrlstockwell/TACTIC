@@ -70,12 +70,46 @@
     const training =
         TACTIC.services?.training;
 
+    const storage =
+        TACTIC.services?.storage;
+
+    const PLANNER_SETTINGS_STORAGE_KEY =
+        "stats:training-planner-settings";
+
+    const DEFAULT_PLANNER_SETTINGS =
+        Object.freeze({
+            dailyRefill:
+                true,
+
+            xanaxEnabled:
+                false,
+
+            xanaxPerDay:
+                3,
+
+            energyDrinksEnabled:
+                false,
+
+            energyDrinksPerDay:
+                0,
+
+            energyPerDrink:
+                30,
+
+            fhcEnabled:
+                false,
+
+            fhcPerDay:
+                0,
+        });
+
     if (
         !repository ||
         !training
+        !storage
     ) {
         console.error(
-            "[TACTIC Stats] Stats Repository or Training service unavailable."
+            "[TACTIC Stats] Stats Repository, Training service, or Storage service unavailable."
         );
 
         return;
@@ -282,6 +316,788 @@
                 },
             }
         );
+    }
+
+    function normalizePlannerSettings(
+        value
+    ) {
+        const source =
+            value &&
+            typeof value ===
+                "object"
+                ? value
+                : {};
+
+        return {
+            dailyRefill:
+                source.dailyRefill !==
+                    undefined
+                    ? Boolean(
+                        source.dailyRefill
+                    )
+                    : DEFAULT_PLANNER_SETTINGS
+                        .dailyRefill,
+
+            xanaxEnabled:
+                Boolean(
+                    source.xanaxEnabled
+                ),
+
+            xanaxPerDay:
+                Math.min(
+                    3,
+                    Math.max(
+                        1,
+                        Math.round(
+                            Number(
+                                source.xanaxPerDay
+                            ) ||
+                            DEFAULT_PLANNER_SETTINGS
+                                .xanaxPerDay
+                        )
+                    )
+                ),
+
+            energyDrinksEnabled:
+                Boolean(
+                    source
+                        .energyDrinksEnabled
+                ),
+
+            energyDrinksPerDay:
+                Math.max(
+                    0,
+                    Math.round(
+                        Number(
+                            source
+                                .energyDrinksPerDay
+                        ) || 0
+                    )
+                ),
+
+            energyPerDrink:
+                Math.max(
+                    0,
+                    Math.round(
+                        Number(
+                            source
+                                .energyPerDrink
+                        ) ||
+                        DEFAULT_PLANNER_SETTINGS
+                            .energyPerDrink
+                    )
+                ),
+
+            fhcEnabled:
+                Boolean(
+                    source.fhcEnabled
+                ),
+
+            fhcPerDay:
+                Math.max(
+                    0,
+                    Math.round(
+                        Number(
+                            source.fhcPerDay
+                        ) || 0
+                    )
+                ),
+        };
+    }
+
+    function getPlannerSettings() {
+        return normalizePlannerSettings(
+            storage.get(
+                PLANNER_SETTINGS_STORAGE_KEY,
+                DEFAULT_PLANNER_SETTINGS
+            )
+        );
+    }
+
+    function savePlannerSettings(
+        settings
+    ) {
+        const normalized =
+            normalizePlannerSettings(
+                settings
+            );
+
+        storage.set(
+            PLANNER_SETTINGS_STORAGE_KEY,
+            normalized
+        );
+
+        return normalized;
+    }
+
+    function stylePlannerField(
+        element
+    ) {
+        Object.assign(
+            element.style,
+            {
+                width:
+                    "100%",
+
+                boxSizing:
+                    "border-box",
+
+                padding:
+                    "6px 8px",
+
+                borderRadius:
+                    "5px",
+
+                border:
+                    "1px solid rgba(255,255,255,.15)",
+
+                background:
+                    "rgba(0,0,0,.2)",
+
+                color:
+                    "inherit",
+
+                fontSize:
+                    "12px",
+
+                textAlign:
+                    "center",
+            }
+        );
+
+        return element;
+    }
+
+    function createPlannerToggleRow(
+        labelText,
+        checked
+    ) {
+        const row =
+            createElement(
+                "label",
+                {
+                    styles: {
+                        display:
+                            "flex",
+
+                        alignItems:
+                            "center",
+
+                        justifyContent:
+                            "space-between",
+
+                        gap:
+                            "10px",
+
+                        cursor:
+                            "pointer",
+
+                        fontSize:
+                            "12px",
+                    },
+                }
+            );
+
+        const label =
+            createElement(
+                "span",
+                {
+                    text:
+                        labelText,
+                }
+            );
+
+        const checkbox =
+            document.createElement(
+                "input"
+            );
+
+        checkbox.type =
+            "checkbox";
+
+        checkbox.checked =
+            checked;
+
+        checkbox.style.width =
+            "16px";
+
+        checkbox.style.height =
+            "16px";
+
+        row.append(
+            label,
+            checkbox
+        );
+
+        return {
+            row,
+            checkbox,
+        };
+    }
+
+    function createPlannerSettingsPanel() {
+        let settings =
+            getPlannerSettings();
+
+        const panel =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "12px",
+
+                        padding:
+                            "12px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.12)",
+
+                        borderRadius:
+                            "7px",
+
+                        background:
+                            "rgba(255,255,255,.025)",
+                    },
+                }
+            );
+
+        const heading =
+            createElement(
+                "div",
+                {
+                    text:
+                        "TRAINING PLANNER SETTINGS",
+
+                    styles: {
+                        textAlign:
+                            "center",
+
+                        fontSize:
+                            "11px",
+
+                        fontWeight:
+                            "700",
+
+                        letterSpacing:
+                            ".07em",
+
+                        opacity:
+                            ".7",
+                    },
+                }
+            );
+
+        panel.appendChild(
+            heading
+        );
+
+        /*
+         * DAILY REFILL
+         */
+
+        const dailyRefill =
+            createPlannerToggleRow(
+                "Include daily energy refill",
+                settings.dailyRefill
+            );
+
+        dailyRefill.checkbox.addEventListener(
+            "change",
+            () => {
+                settings.dailyRefill =
+                    dailyRefill.checkbox.checked;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        panel.appendChild(
+            dailyRefill.row
+        );
+
+        /*
+         * XANAX
+         */
+
+        const xanaxSection =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "7px",
+
+                        paddingTop:
+                            "10px",
+
+                        borderTop:
+                            "1px solid rgba(255,255,255,.08)",
+                    },
+                }
+            );
+
+        const xanaxToggle =
+            createPlannerToggleRow(
+                "Include Xanax",
+                settings.xanaxEnabled
+            );
+
+        const xanaxControl =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "1fr 90px",
+
+                        gap:
+                            "8px",
+
+                        alignItems:
+                            "center",
+                    },
+                }
+            );
+
+        xanaxControl.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        "Xanax per day",
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        opacity:
+                            ".7",
+                    },
+                }
+            )
+        );
+
+        const xanaxSelect =
+            stylePlannerField(
+                document.createElement(
+                    "select"
+                )
+            );
+
+        for (
+            const amount of
+            [1, 2, 3]
+        ) {
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+            option.value =
+                String(amount);
+
+            option.textContent =
+                String(amount);
+
+            xanaxSelect.appendChild(
+                option
+            );
+        }
+
+        xanaxSelect.value =
+            String(
+                settings.xanaxPerDay
+            );
+
+        xanaxSelect.disabled =
+            !settings.xanaxEnabled;
+
+        xanaxToggle.checkbox.addEventListener(
+            "change",
+            () => {
+                settings.xanaxEnabled =
+                    xanaxToggle.checkbox.checked;
+
+                xanaxSelect.disabled =
+                    !settings.xanaxEnabled;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        xanaxSelect.addEventListener(
+            "change",
+            () => {
+                settings.xanaxPerDay =
+                    Number(
+                        xanaxSelect.value
+                    );
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        xanaxControl.appendChild(
+            xanaxSelect
+        );
+
+        xanaxSection.append(
+            xanaxToggle.row,
+            xanaxControl
+        );
+
+        panel.appendChild(
+            xanaxSection
+        );
+
+        /*
+         * ENERGY DRINKS
+         */
+
+        const drinksSection =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "7px",
+
+                        paddingTop:
+                            "10px",
+
+                        borderTop:
+                            "1px solid rgba(255,255,255,.08)",
+                    },
+                }
+            );
+
+        const drinksToggle =
+            createPlannerToggleRow(
+                "Include energy drinks",
+                settings.energyDrinksEnabled
+            );
+
+        const drinksGrid =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "1fr 90px",
+
+                        gap:
+                            "8px",
+
+                        alignItems:
+                            "center",
+                    },
+                }
+            );
+
+        const drinksQty =
+            stylePlannerField(
+                document.createElement(
+                    "input"
+                )
+            );
+
+        drinksQty.type =
+            "number";
+
+        drinksQty.min =
+            "0";
+
+        drinksQty.step =
+            "1";
+
+        drinksQty.value =
+            String(
+                settings.energyDrinksPerDay
+            );
+
+        const drinkEnergy =
+            stylePlannerField(
+                document.createElement(
+                    input"
+                )
+            );
+
+        drinkEnergy.type =
+            "number";
+
+        drinkEnergy.min =
+            "0";
+
+        drinkEnergy.step =
+            "1";
+
+        drinkEnergy.value =
+            String(
+                settings.energyPerDrink
+            );
+
+        drinksQty.disabled =
+            !settings.energyDrinksEnabled;
+
+        drinkEnergy.disabled =
+            !settings.energyDrinksEnabled;
+
+        drinksGrid.append(
+            createElement(
+                "div",
+                {
+                    text:
+                        "Drinks per day",
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        opacity:
+                            ".7",
+                    },
+                }
+            ),
+            drinksQty,
+
+            createElement(
+                "div",
+                {
+                    text:
+                        "Energy per drink",
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        opacity:
+                            ".7",
+                    },
+                }
+            ),
+            drinkEnergy
+        );
+
+        drinksToggle.checkbox.addEventListener(
+            "change",
+            () => {
+                settings.energyDrinksEnabled =
+                    drinksToggle.checkbox.checked;
+
+                drinksQty.disabled =
+                    !settings.energyDrinksEnabled;
+
+                drinkEnergy.disabled =
+                    !settings.energyDrinksEnabled;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        drinksQty.addEventListener(
+            "input",
+            () => {
+                settings.energyDrinksPerDay =
+                    Number(
+                        drinksQty.value
+                    ) || 0;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        drinkEnergy.addEventListener(
+            "input",
+            () => {
+                settings.energyPerDrink =
+                    Number(
+                        drinkEnergy.value
+                    ) || 0;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        drinksSection.append(
+            drinksToggle.row,
+            drinksGrid
+        );
+
+        panel.appendChild(
+            drinksSection
+        );
+
+        /*
+         * FHC
+         */
+
+        const fhcSection =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "7px",
+
+                        paddingTop:
+                            "10px",
+
+                        borderTop:
+                            "1px solid rgba(255,255,255,.08)",
+                    },
+                }
+            );
+
+        const fhcToggle =
+            createPlannerToggleRow(
+                "Include FHC",
+                settings.fhcEnabled
+            );
+
+        const fhcControl =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gridTemplateColumns:
+                            "1fr 90px",
+
+                        gap:
+                            "8px",
+
+                        alignItems:
+                            "center",
+                    },
+                }
+            );
+
+        fhcControl.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        "FHC per day",
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        opacity:
+                            ".7",
+                    },
+                }
+            )
+        );
+
+        const fhcQty =
+            stylePlannerField(
+                document.createElement(
+                    "input"
+                )
+            );
+
+        fhcQty.type =
+            "number";
+
+        fhcQty.min =
+            "0";
+
+        fhcQty.step =
+            "1";
+
+        fhcQty.value =
+            String(
+                settings.fhcPerDay
+            );
+
+        fhcQty.disabled =
+            !settings.fhcEnabled;
+
+        fhcToggle.checkbox.addEventListener(
+            "change",
+            () => {
+                settings.fhcEnabled =
+                    fhcToggle.checkbox.checked;
+
+                fhcQty.disabled =
+                    !settings.fhcEnabled;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        fhcQty.addEventListener(
+            "input",
+            () => {
+                settings.fhcPerDay =
+                    Number(
+                        fhcQty.value
+                    ) || 0;
+
+                settings =
+                    savePlannerSettings(
+                        settings
+                    );
+            }
+        );
+
+        fhcControl.appendChild(
+            fhcQty
+        );
+
+        fhcSection.append(
+            fhcToggle.row,
+            fhcControl
+        );
+
+        panel.appendChild(
+            fhcSection
+        );
+
+        return panel;
     }
 
     function createStatCard(
@@ -1930,6 +2746,13 @@
 
         root.appendChild(
             saveGoals
+        );
+
+        const plannerSettingsPanel =
+            createPlannerSettingsPanel();
+
+        root.appendChild(
+            plannerSettingsPanel
         );
 
         if (
