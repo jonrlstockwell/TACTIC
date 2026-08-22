@@ -83,7 +83,7 @@
 //
 // Base DOM service.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=1
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/services/dom/index.js?v=2
 //
 // Selector registry and Torn selector catalog.
 //
