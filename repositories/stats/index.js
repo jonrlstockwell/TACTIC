@@ -102,6 +102,9 @@
 
         gyms:
             null,
+
+        factionUpgrades:
+            null,
     };
 
     function clone(
@@ -342,6 +345,31 @@
         };
     }
 
+    async function loadFactionUpgrades() {
+        try {
+            return await apiRequest(
+                "/v2/faction/upgrades"
+            );
+        } catch (error) {
+            /*
+             * Faction upgrade information can require faction API
+             * permissions depending on the player's role/key access.
+             *
+             * Do not fail the entire Stats refresh if it is unavailable.
+             */
+            logger?.warn(
+                "Faction upgrades unavailable",
+                {
+                    message:
+                        error?.message ||
+                        String(error),
+                }
+            );
+
+            return null;
+        }
+    }
+
     async function refresh() {
         if (state.loading) {
             return inspect();
@@ -366,6 +394,7 @@
             const [
                 userResponse,
                 gymResponse,
+                factionUpgradesResponse,
             ] =
                 await Promise.all([
                     apiRequest(
@@ -375,6 +404,8 @@
                     apiRequest(
                         "/v2/torn/gyms"
                     ),
+
+                    loadFactionUpgrades(),
                 ]);
 
             console.group(
@@ -441,6 +472,11 @@
                     {}
                 );
 
+            state.factionUpgrades =
+                clone(
+                    factionUpgradesResponse
+                );
+
             state.loadedAt =
                 Date.now();
 
@@ -460,6 +496,10 @@
 
                     gyms:
                         state.gyms,
+
+                    factionUpgrades:
+                        state
+                            .factionUpgrades,
 
                     loadedAt:
                         state
@@ -541,6 +581,11 @@
                 cached.gyms
             );
 
+        state.factionUpgrades =
+            clone(
+                cached.factionUpgrades
+            );
+
         state.loadedAt =
             Number.isFinite(
                 cached.loadedAt
@@ -581,6 +626,12 @@
             gyms:
                 clone(
                     state.gyms
+                ),
+
+            factionUpgrades:
+                clone(
+                    state
+                        .factionUpgrades
                 ),
 
             goals:
