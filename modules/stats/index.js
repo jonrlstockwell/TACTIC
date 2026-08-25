@@ -52,9 +52,6 @@
     let statsRefreshInFlight =
         false;
 
-    let autoRefreshContainer =
-        null;
-
     const repository =
         TACTIC.repositories?.stats;
 
@@ -2022,6 +2019,81 @@
         }
     }
 
+    function isGymPage() {
+        return (
+            location.pathname
+                .toLowerCase()
+                .includes(
+                    "gym"
+                )
+        );
+    }
+
+    function isManualTrainButton(
+        element
+    ) {
+        const button =
+            element?.closest?.(
+                "button.torn-btn"
+            );
+
+        if (!button) {
+            return null;
+        }
+
+        const text =
+            String(
+                button.textContent ||
+                ""
+            )
+                .trim()
+                .toUpperCase();
+
+        if (
+            text !== "TRAIN" ||
+            button.disabled
+        ) {
+            return null;
+        }
+
+        return button;
+    }
+
+    function handleGymTrainClick(
+        event
+    ) {
+        if (
+            !isGymPage()
+        ) {
+            return;
+        }
+
+        const button =
+            isManualTrainButton(
+                event.target
+            );
+
+        if (!button) {
+            return;
+        }
+
+        /*
+         * The user manually initiated the Torn train action.
+         *
+         * Wait briefly for Torn to process the training request,
+         * then synchronize TACTIC from the API once.
+         */
+        globalThis.setTimeout(
+            () => {
+                void refreshStatsData({
+                    rerender:
+                        true,
+                });
+            },
+            1000
+        );
+    }
+
     async function render(
         container
     ) {
@@ -2315,12 +2387,10 @@
                     "Refreshing...";
 
                 try {
-                    await repository
-                        .refresh();
-
-                    await render(
-                        container
-                    );
+                    await refreshStatsData({
+                        rerender:
+                            true,
+                    });
                 } catch (
                     error
                 ) {
@@ -2797,6 +2867,12 @@
             MODULE_ORDER,
 
         async init() {
+            document.addEventListener(
+                "click",
+                handleGymTrainClick,
+                true
+            );
+
             logger?.info(
                 "Stats module initialized"
             );
@@ -2843,6 +2919,12 @@
         },
 
         destroy() {
+            document.removeEventListener(
+                "click",
+                handleGymTrainClick,
+                true
+            );
+
             stopLiveBars();
 
             logger?.info(
