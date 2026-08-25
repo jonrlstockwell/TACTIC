@@ -43,6 +43,9 @@
     const LIVE_BAR_TICK_MS =
         1000;
 
+    const STATS_FRESH_MS =
+        5 * 1000;
+
     let liveBarTimer =
         null;
 
@@ -1962,6 +1965,30 @@
             );
     }
 
+    function isStatsDataFresh() {
+        const data =
+            repository.inspect();
+
+        const loadedAt =
+            Number(
+                data?.loadedAt
+            );
+
+        if (
+            !Number.isFinite(
+                loadedAt
+            ) ||
+            loadedAt <= 0
+        ) {
+            return false;
+        }
+
+        return (
+            Date.now() -
+            loadedAt
+        ) <= STATS_FRESH_MS;
+    }
+
     async function refreshStatsData({
         rerender = true,
     } = {}) {
@@ -2026,6 +2053,96 @@
                 .includes(
                     "gym"
                 )
+        );
+    }
+
+    async function syncOnGymEntry() {
+        if (
+            !isGymPage()
+        ) {
+            return;
+        }
+
+        if (
+            isStatsDataFresh()
+        ) {
+            return;
+        }
+
+        await refreshStatsData({
+            rerender:
+                true,
+        });
+    }
+
+    function isGymLink(
+        element
+    ) {
+        const link =
+            element?.closest?.(
+                "a[href]"
+            );
+
+        if (!link) {
+            return null;
+        }
+
+        let url;
+
+        try {
+            url =
+                new URL(
+                    link.href,
+                    location.href
+                );
+        } catch {
+            return null;
+        }
+
+        const pathname =
+            String(
+                url.pathname || ""
+            )
+                .toLowerCase();
+
+        if (
+            !pathname.includes(
+                "gym"
+            )
+        ) {
+            return null;
+        }
+
+        return link;
+    }
+
+    function handleGymNavigationClick(
+        event
+    ) {
+        const link =
+            isGymLink(
+                event.target
+            );
+
+        if (!link) {
+            return;
+        }
+
+        /*
+         * The user manually chose to navigate to the Gym.
+         *
+         * Give Torn time to complete the page transition, then
+         * synchronize TACTIC once from the API.
+         */
+        globalThis.setTimeout(
+            () => {
+                if (
+                    isGymPage()
+                ) {
+                    void syncOnGymEntry();
+                }
+            },
+            750
         );
     }
 
@@ -2873,6 +2990,23 @@
                 true
             );
 
+            document.addEventListener(
+                "click",
+                handleGymNavigationClick,
+                true
+            );
+
+            if (
+                isGymPage()
+            ) {
+                globalThis.setTimeout(
+                    () => {
+                        void syncOnGymEntry();
+                    },
+                    500
+                );
+            }
+
             logger?.info(
                 "Stats module initialized"
             );
@@ -2893,17 +3027,21 @@
              * Opening the Stats drawer is a deliberate user action,
              * so synchronize once from the Torn API.
              */
-            try {
-                await repository.refresh();
-            } catch (error) {
-                logger?.warn(
-                    "Initial Stats refresh failed",
-                    {
-                        message:
-                            error?.message ||
-                            String(error),
-                    }
-                );
+            if (
+                !isStatsDataFresh()
+            ) {
+                try {
+                    await repository.refresh();
+                } catch (error) {
+                    logger?.warn(
+                        "Initial Stats refresh failed",
+                        {
+                            message:
+                                error?.message ||
+                                String(error),
+                        }
+                    );
+                }
             }
 
             const result =
@@ -2922,6 +3060,12 @@
             document.removeEventListener(
                 "click",
                 handleGymTrainClick,
+                true
+            );
+
+            document.removeEventListener(
+                "click",
+                handleGymNavigationClick,
                 true
             );
 
