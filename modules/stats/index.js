@@ -40,22 +40,16 @@
     const MODULE_ORDER =
         300;
 
-    const AUTO_REFRESH_MS =
-        15 * 1000;
-
-    const AUTO_REFRESH_STALE_MS =
-        30 * 1000;
-
     const LIVE_BAR_TICK_MS =
         1000;
-
-    let autoRefreshTimer =
-        null;
 
     let liveBarTimer =
         null;
 
-    let autoRefreshInFlight =
+    let statsContainer =
+        null;
+
+    let statsRefreshInFlight =
         false;
 
     let autoRefreshContainer =
@@ -1810,7 +1804,7 @@
         if (
             current >= maximum
         ) {
-            return maximum;
+            return current;
         }
 
         const elapsedSeconds =
@@ -1850,19 +1844,7 @@
         );
     }
 
-    function stopAutoRefresh() {
-        if (
-            autoRefreshTimer !==
-            null
-        ) {
-            globalThis.clearInterval(
-                autoRefreshTimer
-            );
-
-            autoRefreshTimer =
-                null;
-        }
-
+    function stopLiveBars() {
         if (
             liveBarTimer !==
             null
@@ -1875,7 +1857,7 @@
                 null;
         }
 
-        autoRefreshContainer =
+        statsContainer =
             null;
     }
 
@@ -1983,105 +1965,69 @@
             );
     }
 
-    async function runAutoRefresh(
-        container
-    ) {
+    async function refreshStatsData({
+        rerender = true,
+    } = {}) {
         if (
-            autoRefreshInFlight ||
-            !container ||
-            !container.isConnected
+            statsRefreshInFlight
         ) {
-            return;
+            return false;
         }
 
-        const data =
-            repository.inspect();
-
-        if (
-            !data
-                .apiKeyConfigured
-        ) {
-            return;
-        }
-
-        autoRefreshInFlight =
+        statsRefreshInFlight =
             true;
 
-        const drafts =
-            captureGoalDrafts(
-                container
-            );
-
         try {
-            await repository
-                .refresh();
+            await repository.refresh();
 
             if (
-                container.isConnected
+                rerender &&
+                statsContainer &&
+                statsContainer.isConnected
             ) {
+                const drafts =
+                    captureGoalDrafts(
+                        statsContainer
+                    );
+
                 await render(
-                    container
+                    statsContainer
                 );
 
                 restoreGoalDrafts(
-                    container,
+                    statsContainer,
                     drafts
                 );
+
+                startLiveBars(
+                    statsContainer
+                );
             }
+
+            return true;
         } catch (error) {
-            /*
-             * Automatic refresh failures should not destroy the
-             * currently displayed Stats page.
-             *
-             * The manual Refresh Data button remains available
-             * for explicit retries.
-             */
             logger?.warn(
-                "Stats automatic refresh failed",
+                "Stats refresh failed",
                 {
                     message:
                         error?.message ||
                         String(error),
                 }
             );
+
+            return false;
         } finally {
-            autoRefreshInFlight =
+            statsRefreshInFlight =
                 false;
         }
-    }
-
-    function startAutoRefresh(
-        container
-    ) {
-        stopAutoRefresh();
-
-        autoRefreshContainer =
-            container;
-
-        autoRefreshTimer =
-            globalThis.setInterval(
-                () => {
-                    if (
-                        !autoRefreshContainer ||
-                        !autoRefreshContainer
-                            .isConnected
-                    ) {
-                        stopAutoRefresh();
-
-                        return;
-                    }
-
-                    void runAutoRefresh(
-                        autoRefreshContainer
-                    );
-                },
-                AUTO_REFRESH_MS
-            );
     }
 
     async function render(
         container
     ) {
+        statsContainer =
+            container;
+
         container.replaceChildren();
 
         const data =
@@ -2302,12 +2248,10 @@
                         "Loading...";
 
                     try {
-                        await repository
-                            .refresh();
-
-                        await render(
-                            container
-                        );
+                        await refreshStatsData({
+                            rerender:
+                                true,
+                        });
                     } catch (
                         error
                     ) {
@@ -2866,54 +2810,40 @@
         async render(
             container
         ) {
+            statsContainer =
+                container;
+
+            /*
+             * Opening the Stats drawer is a deliberate user action,
+             * so synchronize once from the Torn API.
+             */
+            try {
+                await repository.refresh();
+            } catch (error) {
+                logger?.warn(
+                    "Initial Stats refresh failed",
+                    {
+                        message:
+                            error?.message ||
+                            String(error),
+                    }
+                );
+            }
+
             const result =
                 await render(
                     container
                 );
 
-            startAutoRefresh(
-                container
-            );
-
             startLiveBars(
                 container
             );
-
-            const data =
-                repository.inspect();
-
-            const age =
-                data.loadedAt
-                    ? Date.now() -
-                    data.loadedAt
-                    : Infinity;
-
-            /*
-             * When Stats is opened, refresh immediately if the
-             * repository data is missing or already stale.
-             *
-             * Otherwise the normal automatic refresh cycle takes over.
-             */
-            if (
-                data.apiKeyConfigured &&
-                age >
-                    AUTO_REFRESH_STALE_MS
-            ) {
-                globalThis.setTimeout(
-                    () => {
-                        void runAutoRefresh(
-                            container
-                        );
-                    },
-                    0
-                );
-            }
 
             return result;
         },
 
         destroy() {
-            stopAutoRefresh();
+            stopLiveBars();
 
             logger?.info(
                 "Stats module destroyed"
