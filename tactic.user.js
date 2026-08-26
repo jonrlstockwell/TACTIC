@@ -217,7 +217,7 @@
 //
 // Battle stat overview, goals, and gym training tools.
 //
-// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=25
+// @require      https://raw.githubusercontent.com/jonrlstockwell/TACTIC/main/modules/stats/index.js?v=26
 //
 //
 // ============================================================

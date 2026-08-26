@@ -1146,6 +1146,14 @@
             fhcSection
         );
 
+        const statsData =
+            repository.inspect();
+
+        const maximumBoosterCooldownHours =
+            getMaximumBoosterCooldownHours(
+                statsData?.userPerks
+            );
+
         const boosterHoursRequested =
             (
                 settings
@@ -1163,16 +1171,42 @@
                     : 0
             );
 
+        panel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `Booster cooldown: ${boosterHoursRequested}h / ${maximumBoosterCooldownHours}h`,
+
+                    styles: {
+                        fontSize:
+                            "10px",
+
+                        textAlign:
+                            "center",
+
+                        opacity:
+                            ".6",
+                    },
+                }
+            )
+        );
+
         if (
             boosterHoursRequested >
-            24
+            maximumBoosterCooldownHours
         ) {
+            const boosterHoursOver =
+                boosterHoursRequested -
+                maximumBoosterCooldownHours;
+
             panel.appendChild(
                 createElement(
                     "div",
                     {
                         text:
-                            `Requested consumables generate ${boosterHoursRequested}h of booster cooldown per day. TACTIC will cap the selected plan to a sustainable 24h/day.`,
+                            text:
+                                `You are over your booster cooldown of ${maximumBoosterCooldownHours} hours by ${boosterHoursOver} hours.`,
 
                         styles: {
                             fontSize:
@@ -1497,6 +1531,68 @@
         return data;
     }
 
+    function getMaximumBoosterCooldownHours(
+        userPerks
+    ) {
+        const BASE_BOOSTER_COOLDOWN_HOURS =
+            24;
+
+        const factionPerks =
+            userPerks?.perks?.faction;
+
+        if (
+            !Array.isArray(
+                factionPerks
+            )
+        ) {
+            return BASE_BOOSTER_COOLDOWN_HOURS;
+        }
+
+        let bonusHours =
+            0;
+
+        for (
+            const perk of
+            factionPerks
+        ) {
+            const text =
+                String(
+                    perk || ""
+                );
+
+            const match =
+                text.match(
+                    /\+\s*(\d+(?:\.\d+)?)\s*hours?\s+maximum\s+booster\s+cooldown/i
+                );
+
+            if (!match) {
+                continue;
+            }
+
+            const value =
+                Number(
+                    match[1]
+                );
+
+            if (
+                Number.isFinite(
+                    value
+                )
+            ) {
+                bonusHours =
+                    Math.max(
+                        bonusHours,
+                        value
+                    );
+            }
+        }
+
+        return (
+            BASE_BOOSTER_COOLDOWN_HOURS +
+            bonusHours
+        );
+    }
+
     function calculatePlannerTime({
         energyRequired,
         currentEnergy,
@@ -1504,6 +1600,7 @@
         energyIncrement,
         energyInterval,
         settings,
+        userPerks,
     } = {}) {
         const required =
             Math.max(
@@ -1637,8 +1734,13 @@
                 )
                 : 0;
 
+        const maximumBoosterCooldownHours =
+            getMaximumBoosterCooldownHours(
+                userPerks
+            );
+
         let availableBoosterHours =
-            24;
+            maximumBoosterCooldownHours;
 
         /*
          * Prioritize FHC first because each FHC gives
@@ -1726,6 +1828,8 @@
 
         return {
             remainingEnergy,
+
+            maximumBoosterCooldownHours,
 
             naturalEnergyPerDay,
 
@@ -1875,6 +1979,9 @@
 
                     settings:
                         plannerSettings,
+
+                    userPerks:
+                        data?.userPerks,
                 })
                 : null;
 
