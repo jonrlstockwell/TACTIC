@@ -1182,18 +1182,27 @@
         }
 
         const text =
-            mainContainer
-                .textContent ||
+            mainContainer.textContent ||
             "";
 
+        /*
+         * Torn places the countdown immediately after the
+         * maximum value in textContent:
+         *
+         * Energy:90/15006:25
+         * Happy:4914/502511:25
+         *
+         * The lazy maximum capture stops when the MM:SS
+         * countdown begins.
+         */
         const energyMatch =
             text.match(
-                /Energy:\s*([\d,]+)\s*\/\s*([\d,]+)/i
+                /Energy:\s*([\d,]+)\s*\/\s*([\d,]+?)(?=\d{2}:\d{2}|FULL|$)/i
             );
 
         const happinessMatch =
             text.match(
-                /Happy:\s*([\d,]+)\s*\/\s*([\d,]+)/i
+                /Happy:\s*([\d,]+)\s*\/\s*([\d,]+?)(?=\d{2}:\d{2}|FULL|$)/i
             );
 
         return {
@@ -2464,8 +2473,10 @@
     }
 
     async function refreshFromVisibleGymPage(
-        attempts = 4,
-        delayMs = 300
+        trainedStat,
+        previousValue,
+        attempts = 8,
+        delayMs = 150
     ) {
         for (
             let attempt = 0;
@@ -2480,20 +2491,37 @@
                     )
             );
 
-            captureVisiblePageSnapshot();
-
             const snapshot =
-                livePageSnapshot;
+                captureVisiblePageSnapshot();
 
+            const newValue =
+                Number(
+                    snapshot
+                        ?.battlestats
+                        ?.[trainedStat]
+                );
+
+            /*
+             * Do not stop merely because battle stats exist.
+             *
+             * Torn may update Energy before it updates the stat
+             * value in the Gym DOM. Wait until the stat the user
+             * actually trained has changed.
+             */
             if (
-                snapshot &&
-                Object.keys(
-                    snapshot.battlestats || {}
-                ).length > 0
+                Number.isFinite(
+                    newValue
+                ) &&
+                Number.isFinite(
+                    previousValue
+                ) &&
+                newValue !==
+                    previousValue
             ) {
                 if (
                     statsContainer &&
-                    statsContainer.isConnected
+                    statsContainer
+                        .isConnected
                 ) {
                     const drafts =
                         captureGoalDrafts(
@@ -2518,6 +2546,35 @@
             }
         }
 
+        /*
+         * If Torn's DOM took longer than expected, use the
+         * newest visible-page snapshot anyway.
+         */
+        captureVisiblePageSnapshot();
+
+        if (
+            statsContainer &&
+            statsContainer.isConnected
+        ) {
+            const drafts =
+                captureGoalDrafts(
+                    statsContainer
+                );
+
+            await render(
+                statsContainer
+            );
+
+            restoreGoalDrafts(
+                statsContainer,
+                drafts
+            );
+
+            startLiveBars(
+                statsContainer
+            );
+        }
+
         return false;
     }
 
@@ -2539,43 +2596,51 @@
             return;
         }
 
-        void refreshFromVisibleGymPage();
+        const row =
+            button.closest(
+                "li"
+            );
 
-        /*
-         * The user manually initiated the Torn train action.
-         *
-         * Wait briefly for Torn to process the training request,
-         * then synchronize TACTIC from the API once.
-         */
-        globalThis.setTimeout(
-            async () => {
-                captureVisiblePageSnapshot();
+        if (!row) {
+            return;
+        }
 
-                if (
-                    statsContainer &&
-                    statsContainer
-                        .isConnected
-                ) {
-                    const drafts =
-                        captureGoalDrafts(
-                            statsContainer
-                        );
+        const rowText =
+            String(
+                row.textContent ||
+                ""
+            )
+                .trim()
+                .toLowerCase();
 
-                    await render(
-                        statsContainer
-                    );
+        const stat =
+            [
+                "strength",
+                "defense",
+                "speed",
+                "dexterity",
+            ].find(
+                key =>
+                    rowText.startsWith(
+                        key
+                    )
+            );
 
-                    restoreGoalDrafts(
-                        statsContainer,
-                        drafts
-                    );
+        if (!stat) {
+            return;
+        }
 
-                    startLiveBars(
-                        statsContainer
-                    );
-                }
-            },
-            500
+        const beforeStats =
+            readGymStatsFromPage();
+
+        const beforeValue =
+            Number(
+                beforeStats?.[stat]
+            );
+
+        void refreshFromVisibleGymPage(
+            stat,
+            beforeValue
         );
     }
 
