@@ -1205,8 +1205,7 @@
                     "div",
                     {
                         text:
-                            text:
-                                `You are over your booster cooldown of ${maximumBoosterCooldownHours} hours by ${boosterHoursOver} hours.`,
+                            `You are over your booster cooldown of ${maximumBoosterCooldownHours} hours by ${boosterHoursOver} hours.`,
 
                         styles: {
                             fontSize:
