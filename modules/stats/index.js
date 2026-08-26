@@ -1146,6 +1146,61 @@
             fhcSection
         );
 
+        const boosterHoursRequested =
+            (
+                settings
+                    .energyDrinksEnabled
+                    ? settings
+                        .energyDrinksPerDay *
+                        2
+                    : 0
+            ) +
+            (
+                settings.fhcEnabled
+                    ? settings
+                        .fhcPerDay *
+                        6
+                    : 0
+            );
+
+        if (
+            boosterHoursRequested >
+            24
+        ) {
+            panel.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `Requested consumables generate ${boosterHoursRequested}h of booster cooldown per day. TACTIC will cap the selected plan to a sustainable 24h/day.`,
+
+                        styles: {
+                            fontSize:
+                                "10px",
+
+                            lineHeight:
+                                "1.35",
+
+                            textAlign:
+                                "center",
+
+                            opacity:
+                                ".65",
+
+                            padding:
+                                "8px",
+
+                            border:
+                                "1px solid rgba(255,255,255,.08)",
+
+                            borderRadius:
+                                "5px",
+                        },
+                    }
+                )
+            );
+        }
+
         return panel;
     }
 
@@ -1442,6 +1497,266 @@
         return data;
     }
 
+    function calculatePlannerTime({
+        energyRequired,
+        currentEnergy,
+        maximumEnergy,
+        energyIncrement,
+        energyInterval,
+        settings,
+    } = {}) {
+        const required =
+            Math.max(
+                0,
+                Number(
+                    energyRequired
+                ) || 0
+            );
+
+        const current =
+            Math.max(
+                0,
+                Number(
+                    currentEnergy
+                ) || 0
+            );
+
+        const maximum =
+            Math.max(
+                0,
+                Number(
+                    maximumEnergy
+                ) || 0
+            );
+
+        const increment =
+            Math.max(
+                0,
+                Number(
+                    energyIncrement
+                ) || 0
+            );
+
+        const interval =
+            Math.max(
+                0,
+                Number(
+                    energyInterval
+                ) || 0
+            );
+
+        if (
+            required <= 0 ||
+            increment <= 0 ||
+            interval <= 0
+        ) {
+            return null;
+        }
+
+        const remainingEnergy =
+            Math.max(
+                0,
+                required -
+                    current
+            );
+
+        const naturalEnergyPerDay =
+            (
+                increment *
+                86400
+            ) /
+            interval;
+
+        /*
+         * Daily refill.
+         *
+         * For planning, assume the player uses the refill
+         * efficiently when their Energy is near empty.
+         */
+        const refillEnergyPerDay =
+            settings?.dailyRefill
+                ? maximum
+                : 0;
+
+        /*
+         * Xanax.
+         *
+         * User chooses 1-3 intended doses per day.
+         * Each successful Xanax provides 250 Energy.
+         */
+        const xanaxPerDay =
+            settings?.xanaxEnabled
+                ? Math.min(
+                    3,
+                    Math.max(
+                        1,
+                        Number(
+                            settings.xanaxPerDay
+                        ) || 1
+                    )
+                )
+                : 0;
+
+        const xanaxEnergyPerDay =
+            xanaxPerDay *
+            250;
+
+        /*
+         * Booster cooldown.
+         *
+         * Energy Drink = 2 hours
+         * FHC          = 6 hours
+         *
+         * For a sustainable repeating daily schedule,
+         * limit total requested booster usage to 24 hours
+         * of cooldown generated per day.
+         */
+        let requestedDrinks =
+            settings
+                ?.energyDrinksEnabled
+                ? Math.max(
+                    0,
+                    Math.round(
+                        Number(
+                            settings
+                                .energyDrinksPerDay
+                        ) || 0
+                    )
+                )
+                : 0;
+
+        let requestedFhc =
+            settings?.fhcEnabled
+                ? Math.max(
+                    0,
+                    Math.round(
+                        Number(
+                            settings.fhcPerDay
+                        ) || 0
+                    )
+                )
+                : 0;
+
+        let availableBoosterHours =
+            24;
+
+        /*
+         * Prioritize FHC first because each FHC gives
+         * one complete Energy-bar refill.
+         *
+         * Remaining booster cooldown can then be used
+         * for Energy Drinks.
+         */
+        const usableFhc =
+            Math.min(
+                requestedFhc,
+                Math.floor(
+                    availableBoosterHours /
+                    6
+                )
+            );
+
+        availableBoosterHours -=
+            usableFhc *
+            6;
+
+        const usableDrinks =
+            Math.min(
+                requestedDrinks,
+                Math.floor(
+                    availableBoosterHours /
+                    2
+                )
+            );
+
+        const energyPerDrink =
+            Math.max(
+                0,
+                Number(
+                    settings?.energyPerDrink
+                ) || 0
+            );
+
+        const drinkEnergyPerDay =
+            usableDrinks *
+            energyPerDrink;
+
+        const fhcEnergyPerDay =
+            usableFhc *
+            maximum;
+
+        const selectedExtraEnergyPerDay =
+            refillEnergyPerDay +
+            xanaxEnergyPerDay +
+            drinkEnergyPerDay +
+            fhcEnergyPerDay;
+
+        const totalEnergyPerDay =
+            naturalEnergyPerDay +
+            selectedExtraEnergyPerDay;
+
+        const naturalSeconds =
+            (
+                remainingEnergy /
+                naturalEnergyPerDay
+            ) *
+            86400;
+
+        const refillOnlyEnergyPerDay =
+            naturalEnergyPerDay +
+            refillEnergyPerDay;
+
+        const refillSeconds =
+            refillOnlyEnergyPerDay > 0
+                ? (
+                    remainingEnergy /
+                    refillOnlyEnergyPerDay
+                ) *
+                    86400
+                : null;
+
+        const selectedSeconds =
+            totalEnergyPerDay > 0
+                ? (
+                    remainingEnergy /
+                    totalEnergyPerDay
+                ) *
+                    86400
+                : null;
+
+        return {
+            remainingEnergy,
+
+            naturalEnergyPerDay,
+
+            refillEnergyPerDay,
+
+            xanaxPerDay,
+            xanaxEnergyPerDay,
+
+            requestedDrinks,
+            usableDrinks,
+            drinkEnergyPerDay,
+
+            requestedFhc,
+            usableFhc,
+            fhcEnergyPerDay,
+
+            selectedExtraEnergyPerDay,
+            totalEnergyPerDay,
+
+            naturalSeconds,
+            refillSeconds,
+            selectedSeconds,
+
+            boosterLimited:
+                usableDrinks !==
+                    requestedDrinks ||
+                usableFhc !==
+                    requestedFhc,
+        };
+    }
+
     function createStatCard(
         key,
         label,
@@ -1520,6 +1835,9 @@
         const energyBar =
             data?.bars?.energy;
 
+        const plannerSettings =
+            getPlannerSettings();
+
         const naturalEnergyPlan =
             plan?.estimatedEnergy > 0
                 ? training.estimateNaturalEnergyTime({
@@ -1534,6 +1852,29 @@
 
                     energyInterval:
                         energyBar?.interval,
+                })
+                : null;
+
+        const selectedPlannerPlan =
+            plan?.estimatedEnergy > 0
+                ? calculatePlannerTime({
+                    energyRequired:
+                        plan.estimatedEnergy,
+
+                    currentEnergy:
+                        energyBar?.current,
+
+                    maximumEnergy:
+                        energyBar?.maximum,
+
+                    energyIncrement:
+                        energyBar?.increment,
+
+                    energyInterval:
+                        energyBar?.interval,
+
+                    settings:
+                        plannerSettings,
                 })
                 : null;
 
@@ -1973,7 +2314,110 @@
                                 "center",
                         },
                     }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "With Daily Refill:",
+
+                        styles: {
+                            marginTop:
+                                "4px",
+
+                            fontSize:
+                                "10px",
+
+                            opacity:
+                                ".6",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            selectedPlannerPlan
+                                ?.refillSeconds !==
+                                null &&
+                            selectedPlannerPlan
+                                ?.refillSeconds !==
+                                undefined
+                                ? formatDuration(
+                                    selectedPlannerPlan
+                                        .refillSeconds
+                                )
+                                : "—",
+
+                        styles: {
+                            fontSize:
+                                "11px",
+
+                            fontWeight:
+                                "600",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Selected Plan:",
+
+                        styles: {
+                            marginTop:
+                                "4px",
+
+                            fontSize:
+                                "10px",
+
+                            opacity:
+                                ".6",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            selectedPlannerPlan
+                                ?.selectedSeconds !==
+                                null &&
+                            selectedPlannerPlan
+                                ?.selectedSeconds !==
+                                undefined
+                                ? formatDuration(
+                                    selectedPlannerPlan
+                                        .selectedSeconds
+                                )
+                                : "—",
+
+                        styles: {
+                            fontSize:
+                                "12px",
+
+                            fontWeight:
+                                "700",
+
+                            textAlign:
+                                "center",
+                        },
+                    }
                 )
+
             );
         }
 
