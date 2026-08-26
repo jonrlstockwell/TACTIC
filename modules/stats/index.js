@@ -2475,9 +2475,19 @@
     async function refreshFromVisibleGymPage(
         trainedStat,
         previousValue,
-        attempts = 8,
-        delayMs = 150
+        attempts = 20,
+        delayMs = 100,
+        stableReadsRequired = 3
     ) {
+        let lastValue =
+            Number(previousValue);
+
+        let stableReads =
+            0;
+
+        let latestSnapshot =
+            null;
+
         for (
             let attempt = 0;
             attempt < attempts;
@@ -2494,6 +2504,9 @@
             const snapshot =
                 captureVisiblePageSnapshot();
 
+            latestSnapshot =
+                snapshot;
+
             const newValue =
                 Number(
                     snapshot
@@ -2501,56 +2514,57 @@
                         ?.[trainedStat]
                 );
 
+            if (
+                !Number.isFinite(
+                    newValue
+                )
+            ) {
+                continue;
+            }
+
             /*
-             * Do not stop merely because battle stats exist.
+             * Torn animates the displayed battle-stat number after
+             * training. Do not use the first value that differs from
+             * the old value.
              *
-             * Torn may update Energy before it updates the stat
-             * value in the Gym DOM. Wait until the stat the user
-             * actually trained has changed.
+             * Wait until the visible stat has remained unchanged
+             * for several consecutive reads.
              */
             if (
-                Number.isFinite(
-                    newValue
-                ) &&
-                Number.isFinite(
-                    previousValue
-                ) &&
-                newValue !==
-                    previousValue
+                newValue ===
+                lastValue
             ) {
-                if (
-                    statsContainer &&
-                    statsContainer
-                        .isConnected
-                ) {
-                    const drafts =
-                        captureGoalDrafts(
-                            statsContainer
-                        );
+                stableReads += 1;
+            } else {
+                lastValue =
+                    newValue;
 
-                    await render(
-                        statsContainer
-                    );
+                stableReads =
+                    0;
+            }
 
-                    restoreGoalDrafts(
-                        statsContainer,
-                        drafts
-                    );
+            const statChanged =
+                Number.isFinite(
+                    Number(previousValue)
+                )
+                    ? newValue !==
+                        Number(previousValue)
+                    : true;
 
-                    startLiveBars(
-                        statsContainer
-                    );
-                }
-
-                return true;
+            if (
+                statChanged &&
+                stableReads >=
+                    stableReadsRequired
+            ) {
+                break;
             }
         }
 
         /*
-         * If Torn's DOM took longer than expected, use the
-         * newest visible-page snapshot anyway.
+         * Capture one final snapshot after the value has settled.
          */
-        captureVisiblePageSnapshot();
+        latestSnapshot =
+            captureVisiblePageSnapshot();
 
         if (
             statsContainer &&
@@ -2575,7 +2589,9 @@
             );
         }
 
-        return false;
+        return Boolean(
+            latestSnapshot
+        );
     }
 
     function handleGymTrainClick(
