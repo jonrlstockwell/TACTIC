@@ -1797,38 +1797,6 @@
         const sustainableBoosterHoursPerDay =
             SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
 
-        let availableBoosterHours =
-            sustainableBoosterHoursPerDay;
-
-        /*
-         * Prioritize FHC first because each FHC gives
-         * one complete Energy-bar refill.
-         *
-         * Remaining booster cooldown can then be used
-         * for Energy Drinks.
-         */
-        const usableFhc =
-            Math.min(
-                requestedFhc,
-                Math.floor(
-                    availableBoosterHours /
-                    6
-                )
-            );
-
-        availableBoosterHours -=
-            usableFhc *
-            6;
-
-        const usableDrinks =
-            Math.min(
-                requestedDrinks,
-                Math.floor(
-                    availableBoosterHours /
-                    2
-                )
-            );
-
         const energyPerDrink =
             Math.max(
                 0,
@@ -1836,6 +1804,95 @@
                     settings?.energyPerDrink
                 ) || 0
             );
+        
+        let bestBoosterPlan = {
+            drinks:
+                0,
+
+            fhc:
+                0,
+
+            cooldownHours:
+                0,
+
+            energyPerDay:
+                0,
+        };
+
+        for (
+            let fhcCount = 0;
+            fhcCount <= requestedFhc;
+            fhcCount += 1
+        ) {
+            for (
+                let drinkCount = 0;
+                drinkCount <= requestedDrinks;
+                drinkCount += 1
+            ) {
+                const cooldownHours =
+                    (
+                        fhcCount *
+                        6
+                    ) +
+                    (
+                        drinkCount *
+                        2
+                    );
+
+                if (
+                    cooldownHours >
+                    sustainableBoosterHoursPerDay
+                ) {
+                    continue;
+                }
+
+                const energyPerDay =
+                    (
+                        fhcCount *
+                        maximum
+                    ) +
+                    (
+                        drinkCount *
+                        energyPerDrink
+                    );
+
+                const isBetterEnergy =
+                    energyPerDay >
+                    bestBoosterPlan
+                        .energyPerDay;
+
+                const isSameEnergyLessCooldown =
+                    energyPerDay ===
+                        bestBoosterPlan
+                            .energyPerDay &&
+                    cooldownHours <
+                        bestBoosterPlan
+                            .cooldownHours;
+
+                if (
+                    isBetterEnergy ||
+                    isSameEnergyLessCooldown
+                ) {
+                    bestBoosterPlan = {
+                        drinks:
+                            drinkCount,
+
+                        fhc:
+                            fhcCount,
+
+                        cooldownHours,
+
+                        energyPerDay,
+                    };
+                }
+            }
+        }
+
+        const usableFhc =
+            bestBoosterPlan.fhc;
+
+        const usableDrinks =
+            bestBoosterPlan.drinks;
 
         const drinkEnergyPerDay =
             usableDrinks *
@@ -1890,6 +1947,10 @@
             maximumBoosterCooldownHours,
 
             sustainableBoosterHoursPerDay,
+
+            optimizedBoosterCooldownHours:
+                bestBoosterPlan
+                    .cooldownHours,
 
             naturalEnergyPerDay,
 
