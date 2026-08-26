@@ -46,6 +46,9 @@
     const STATS_FRESH_MS =
         5 * 1000;
 
+    const SUSTAINABLE_BOOSTER_HOURS_PER_DAY =
+        24;
+
     let liveBarTimer =
         null;
 
@@ -1154,31 +1157,46 @@
                 statsData?.userPerks
             );
 
+        const sustainableBoosterHoursPerDay =
+            SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
+
         const boosterHoursRequested =
             (
-                settings
-                    .energyDrinksEnabled
-                    ? settings
-                        .energyDrinksPerDay *
+                settings.energyDrinksEnabled
+                    ? settings.energyDrinksPerDay *
                         2
                     : 0
             ) +
             (
                 settings.fhcEnabled
-                    ? settings
-                        .fhcPerDay *
+                    ? settings.fhcPerDay *
                         6
                     : 0
             );
 
-        panel.appendChild(
+        /*
+         * Always show the user's booster cooldown information.
+         */
+        const boosterSummary =
             createElement(
                 "div",
                 {
-                    text:
-                        `Booster cooldown: ${boosterHoursRequested}h / ${maximumBoosterCooldownHours}h`,
-
                     styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "3px",
+
+                        padding:
+                            "8px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.08)",
+
+                        borderRadius:
+                            "5px",
+
                         fontSize:
                             "10px",
 
@@ -1186,26 +1204,64 @@
                             "center",
 
                         opacity:
-                            ".6",
+                            ".7",
+                    },
+                }
+            );
+
+        boosterSummary.append(
+            createElement(
+                "div",
+                {
+                    text:
+                        `Personal maximum: ${maximumBoosterCooldownHours}h`,
+                }
+            ),
+
+            createElement(
+                "div",
+                {
+                    text:
+                        `Sustainable daily use: ${sustainableBoosterHoursPerDay}h`,
+                }
+            ),
+
+            createElement(
+                "div",
+                {
+                    text:
+                        `Selected daily use: ${boosterHoursRequested}h / ${sustainableBoosterHoursPerDay}h`,
+
+                    styles: {
+                        fontWeight:
+                            "600",
                     },
                 }
             )
         );
 
+        panel.appendChild(
+            boosterSummary
+        );
+
+        /*
+         * Warn only when the selected daily plan exceeds
+         * sustainable daily booster cooldown.
+         */
         if (
             boosterHoursRequested >
-            maximumBoosterCooldownHours
+            sustainableBoosterHoursPerDay
         ) {
             const boosterHoursOver =
                 boosterHoursRequested -
-                maximumBoosterCooldownHours;
+                sustainableBoosterHoursPerDay;
 
             panel.appendChild(
                 createElement(
                     "div",
                     {
                         text:
-                            `You are over your booster cooldown of ${maximumBoosterCooldownHours} hours by ${boosterHoursOver} hours.`,
+                            `Your selected plan exceeds your sustainable booster cooldown by ${boosterHoursOver} hours per day.`,
 
                         styles: {
                             fontSize:
@@ -1218,7 +1274,7 @@
                                 "center",
 
                             opacity:
-                                ".65",
+                                ".7",
 
                             padding:
                                 "8px",
@@ -1235,7 +1291,7 @@
         }
 
         return panel;
-    }
+        }
 
     function parsePageNumber(
         value
@@ -1738,8 +1794,11 @@
                 userPerks
             );
 
+        const sustainableBoosterHoursPerDay =
+            SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
+
         let availableBoosterHours =
-            maximumBoosterCooldownHours;
+            sustainableBoosterHoursPerDay;
 
         /*
          * Prioritize FHC first because each FHC gives
@@ -1829,6 +1888,8 @@
             remainingEnergy,
 
             maximumBoosterCooldownHours,
+
+            sustainableBoosterHoursPerDay,
 
             naturalEnergyPerDay,
 
