@@ -1230,7 +1230,7 @@
                 "div",
                 {
                     text:
-                        `Selected daily use: ${boosterHoursRequested}h / ${sustainableBoosterHoursPerDay}h`,
+                        `Selected cooldown: ${boosterHoursRequested}h/day`,
 
                     styles: {
                         fontWeight:
