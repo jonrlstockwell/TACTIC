@@ -1160,6 +1160,14 @@
         const sustainableBoosterHoursPerDay =
             SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
 
+        const maximumEnergy =
+            Number(
+                statsData
+                    ?.bars
+                    ?.energy
+                    ?.maximum
+            ) || 0;
+
         const boosterHoursRequested =
             (
                 settings.energyDrinksEnabled
@@ -1173,6 +1181,36 @@
                         6
                     : 0
             );
+
+        const requestedDrinks =
+            settings.energyDrinksEnabled
+                ? settings.energyDrinksPerDay
+                : 0;
+
+        const requestedFhc =
+            settings.fhcEnabled
+                ? settings.fhcPerDay
+                : 0;
+
+        const effectiveEnergyPerDrink =
+            settings.energyDrinksEnabled
+                ? settings.energyPerDrink
+                : 0;
+
+        const recommendedBoosterPlan =
+            optimizeBoosterMix({
+                requestedDrinks,
+
+                requestedFhc,
+
+                energyPerDrink:
+                    effectiveEnergyPerDrink,
+
+                maximumEnergy,
+
+                cooldownLimit:
+                    sustainableBoosterHoursPerDay,
+            });
 
         /*
          * Always show the user's booster cooldown information.
@@ -1242,6 +1280,197 @@
 
         panel.appendChild(
             boosterSummary
+        );
+
+        const recommendationPanel =
+            createElement(
+                "div",
+                {
+                    styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "3px",
+
+                        padding:
+                            "8px",
+
+                        border:
+                            "1px solid rgba(255,255,255,.08)",
+
+                        borderRadius:
+                            "5px",
+
+                        textAlign:
+                            "center",
+                    },
+                }
+            );
+
+        recommendationPanel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        "TACTIC RECOMMENDS",
+
+                    styles: {
+                        fontSize:
+                            "10px",
+
+                        fontWeight:
+                            "700",
+
+                        letterSpacing:
+                            ".07em",
+
+                        opacity:
+                            ".7",
+
+                        marginBottom:
+                            "2px",
+                    },
+                }
+            )
+        );
+
+        recommendationPanel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `${recommendedBoosterPlan.fhc} FHC / day`,
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        fontWeight:
+                            "600",
+                    },
+                }
+            )
+        );
+
+        recommendationPanel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `${recommendedBoosterPlan.drinks} Energy Drinks / day`,
+
+                    styles: {
+                        fontSize:
+                            "11px",
+
+                        fontWeight:
+                            "600",
+                    },
+                }
+            )
+        );
+
+        recommendationPanel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `${formatNumber(recommendedBoosterPlan.energyPerDay)} booster Energy / day`,
+
+                    styles: {
+                        marginTop:
+                            "3px",
+
+                        fontSize:
+                            "10px",
+
+                        opacity:
+                            ".75",
+                    },
+                }
+            )
+        );
+
+        recommendationPanel.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `${recommendedBoosterPlan.cooldownHours}h booster cooldown / day`,
+
+                    styles: {
+                        fontSize:
+                            "10px",
+
+                        opacity:
+                            ".75",
+                    },
+                }
+            )
+        );
+
+        if (
+            requestedDrinks > 0 &&
+            requestedFhc > 0
+        ) {
+            recommendationPanel.appendChild(
+                createElement(
+                    "div",
+                    {
+                        styles: {
+                            height:
+                                "1px",
+
+                            background:
+                                "rgba(255,255,255,.08)",
+
+                            margin:
+                                "4px 0",
+                        },
+                    }
+                )
+            );
+
+            recommendationPanel.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `FHC efficiency: ${recommendedBoosterPlan.fhcEfficiency.toFixed(1)} E / cooldown hr`,
+
+                        styles: {
+                            fontSize:
+                                "9px",
+
+                            opacity:
+                                ".6",
+                        },
+                    }
+                )
+            );
+
+            recommendationPanel.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `Can efficiency: ${recommendedBoosterPlan.drinkEfficiency.toFixed(1)} E / cooldown hr`,
+
+                        styles: {
+                            fontSize:
+                                "9px",
+
+                            opacity:
+                                ".6",
+                        },
+                    }
+                )
+            );
+        }
+
+        panel.appendChild(
+            recommendationPanel
         );
 
         /*
@@ -1648,6 +1877,155 @@
         );
     }
 
+    function optimizeBoosterMix({
+        requestedDrinks = 0,
+        requestedFhc = 0,
+        energyPerDrink = 0,
+        maximumEnergy = 0,
+        cooldownLimit =
+            SUSTAINABLE_BOOSTER_HOURS_PER_DAY,
+    } = {}) {
+        const drinksLimit =
+            Math.max(
+                0,
+                Math.round(
+                    Number(
+                        requestedDrinks
+                    ) || 0
+                )
+            );
+
+        const fhcLimit =
+            Math.max(
+                0,
+                Math.round(
+                    Number(
+                        requestedFhc
+                    ) || 0
+                )
+            );
+
+        const drinkEnergy =
+            Math.max(
+                0,
+                Number(
+                    energyPerDrink
+                ) || 0
+            );
+
+        const fhcEnergy =
+            Math.max(
+                0,
+                Number(
+                    maximumEnergy
+                ) || 0
+            );
+
+        const maximumCooldown =
+            Math.max(
+                0,
+                Number(
+                    cooldownLimit
+                ) || 0
+            );
+
+        let bestPlan = {
+            drinks:
+                0,
+
+            fhc:
+                0,
+
+            cooldownHours:
+                0,
+
+            energyPerDay:
+                0,
+        };
+
+        for (
+            let fhcCount = 0;
+            fhcCount <= fhcLimit;
+            fhcCount += 1
+        ) {
+            for (
+                let drinkCount = 0;
+                drinkCount <= drinksLimit;
+                drinkCount += 1
+            ) {
+                const cooldownHours =
+                    (
+                        fhcCount *
+                        6
+                    ) +
+                    (
+                        drinkCount *
+                        2
+                    );
+
+                if (
+                    cooldownHours >
+                    maximumCooldown
+                ) {
+                    continue;
+                }
+
+                const energyPerDay =
+                    (
+                        fhcCount *
+                        fhcEnergy
+                    ) +
+                    (
+                        drinkCount *
+                        drinkEnergy
+                    );
+
+                const moreEnergy =
+                    energyPerDay >
+                    bestPlan.energyPerDay;
+
+                const sameEnergyLessCooldown =
+                    energyPerDay ===
+                        bestPlan.energyPerDay &&
+                    cooldownHours <
+                        bestPlan.cooldownHours;
+
+                if (
+                    moreEnergy ||
+                    sameEnergyLessCooldown
+                ) {
+                    bestPlan = {
+                        drinks:
+                            drinkCount,
+
+                        fhc:
+                            fhcCount,
+
+                        cooldownHours,
+
+                        energyPerDay,
+                    };
+                }
+            }
+        }
+
+        return {
+            ...bestPlan,
+
+            drinkEfficiency:
+                drinkEnergy > 0
+                    ? drinkEnergy /
+                        2
+                    : 0,
+
+            fhcEfficiency:
+                fhcEnergy > 0
+                    ? fhcEnergy /
+                        6
+                    : 0,
+        };
+    }
+
     function calculatePlannerTime({
         energyRequired,
         currentEnergy,
@@ -1804,89 +2182,21 @@
                     settings?.energyPerDrink
                 ) || 0
             );
-        
-        let bestBoosterPlan = {
-            drinks:
-                0,
 
-            fhc:
-                0,
+        const bestBoosterPlan =
+            optimizeBoosterMix({
+                requestedDrinks,
 
-            cooldownHours:
-                0,
+                requestedFhc,
 
-            energyPerDay:
-                0,
-        };
+                energyPerDrink,
 
-        for (
-            let fhcCount = 0;
-            fhcCount <= requestedFhc;
-            fhcCount += 1
-        ) {
-            for (
-                let drinkCount = 0;
-                drinkCount <= requestedDrinks;
-                drinkCount += 1
-            ) {
-                const cooldownHours =
-                    (
-                        fhcCount *
-                        6
-                    ) +
-                    (
-                        drinkCount *
-                        2
-                    );
+                maximumEnergy:
+                    maximum,
 
-                if (
-                    cooldownHours >
-                    sustainableBoosterHoursPerDay
-                ) {
-                    continue;
-                }
-
-                const energyPerDay =
-                    (
-                        fhcCount *
-                        maximum
-                    ) +
-                    (
-                        drinkCount *
-                        energyPerDrink
-                    );
-
-                const isBetterEnergy =
-                    energyPerDay >
-                    bestBoosterPlan
-                        .energyPerDay;
-
-                const isSameEnergyLessCooldown =
-                    energyPerDay ===
-                        bestBoosterPlan
-                            .energyPerDay &&
-                    cooldownHours <
-                        bestBoosterPlan
-                            .cooldownHours;
-
-                if (
-                    isBetterEnergy ||
-                    isSameEnergyLessCooldown
-                ) {
-                    bestBoosterPlan = {
-                        drinks:
-                            drinkCount,
-
-                        fhc:
-                            fhcCount,
-
-                        cooldownHours,
-
-                        energyPerDay,
-                    };
-                }
-            }
-        }
+                cooldownLimit:
+                    sustainableBoosterHoursPerDay,
+            });
 
         const usableFhc =
             bestBoosterPlan.fhc;
