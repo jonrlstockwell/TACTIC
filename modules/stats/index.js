@@ -93,7 +93,7 @@
             energyDrinksPerDay:
                 0,
 
-            energyPerDrink:
+            baseEnergyPerDrink:
                 30,
 
             fhcEnabled:
@@ -378,16 +378,18 @@
                     )
                 ),
 
-            energyPerDrink:
+            baseEnergyPerDrink:
                 Math.max(
-                    0,
+                    5,
                     Math.round(
                         Number(
+                            source
+                                .baseEnergyPerDrink ??
                             source
                                 .energyPerDrink
                         ) ||
                         DEFAULT_PLANNER_SETTINGS
-                            .energyPerDrink
+                            .baseEnergyPerDrink
                     )
                 ),
 
@@ -864,22 +866,53 @@
         const drinkEnergy =
             stylePlannerField(
                 document.createElement(
-                    "input"
+                    "select"
                 )
             );
 
-        drinkEnergy.type =
-            "number";
+        drinkEnergy.style.backgroundColor =
+            "#1b1b1b";
 
-        drinkEnergy.min =
-            "0";
+        drinkEnergy.style.color =
+            "#fff";
 
-        drinkEnergy.step =
-            "1";
+        for (
+            const amount of
+            [
+                5,
+                10,
+                15,
+                20,
+                25,
+                30,
+            ]
+        ) {
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+            option.value =
+                String(amount);
+
+            option.textContent =
+                `${amount} E`;
+
+            option.style.backgroundColor =
+                "#1b1b1b";
+
+            option.style.color =
+                "#fff";
+
+            drinkEnergy.appendChild(
+                option
+            );
+        }
 
         drinkEnergy.value =
             String(
-                settings.energyPerDrink
+                settings
+                    .baseEnergyPerDrink
             );
 
         drinksQty.disabled =
@@ -910,7 +943,7 @@
                 "div",
                 {
                     text:
-                        "Energy per drink",
+                        "Base E / drink",
 
                     styles: {
                         fontSize:
@@ -973,12 +1006,12 @@
         );
 
         drinkEnergy.addEventListener(
-            "input",
+            "change",
             () => {
-                settings.energyPerDrink =
+                settings.baseEnergyPerDrink =
                     Number(
                         drinkEnergy.value
-                    ) || 0;
+                    ) || 30;
 
                 settings =
                     savePlannerSettings(
@@ -990,6 +1023,30 @@
         drinksSection.append(
             drinksToggle.row,
             drinksGrid
+        );
+
+        const drinkEffectSummary =
+            createElement(
+                "div",
+                {
+                    text:
+                        "Effective Energy will be calculated from faction bonuses.",
+
+                    styles: {
+                        fontSize:
+                            "9px",
+
+                        opacity:
+                            ".6",
+
+                        textAlign:
+                            "center",
+                    },
+                }
+            );
+
+        drinksSection.appendChild(
+            drinkEffectSummary
         );
 
         panel.appendChild(
@@ -1152,6 +1209,20 @@
         const statsData =
             repository.inspect();
 
+        const energyDrinkEffect =
+            getEnergyDrinkEffect({
+                baseEnergy:
+                    settings
+                        .baseEnergyPerDrink,
+
+                userPerks:
+                    statsData?.userPerks,
+            });
+
+        const effectiveEnergyPerDrink =
+            energyDrinkEffect
+                .effectiveEnergy;
+
         const maximumBoosterCooldownHours =
             getMaximumBoosterCooldownHours(
                 statsData?.userPerks
@@ -1190,11 +1261,6 @@
         const requestedFhc =
             settings.fhcEnabled
                 ? settings.fhcPerDay
-                : 0;
-
-        const effectiveEnergyPerDrink =
-            settings.energyDrinksEnabled
-                ? settings.energyPerDrink
                 : 0;
 
         const recommendedBoosterPlan =
@@ -1815,6 +1881,119 @@
         return data;
     }
 
+    function getEnergyDrinkFactionBonusPercent(
+        userPerks
+    ) {
+        const factionPerks =
+            userPerks
+                ?.perks
+                ?.faction;
+
+        if (
+            !Array.isArray(
+                factionPerks
+            )
+        ) {
+            return 0;
+        }
+
+        let bonusPercent =
+            0;
+
+        for (
+            const perk of
+            factionPerks
+        ) {
+            const text =
+                String(
+                    perk || ""
+                );
+
+            const match =
+                text.match(
+                    /\+\s*(\d+(?:\.\d+)?)%\s+energy\s+(?:gain\s+)?from\s+energy\s+drinks/i
+                );
+
+            if (!match) {
+                continue;
+            }
+
+            const value =
+                Number(
+                    match[1]
+                );
+
+            if (
+                Number.isFinite(
+                    value
+                )
+            ) {
+                bonusPercent =
+                    Math.max(
+                        bonusPercent,
+                        value
+                    );
+            }
+        }
+
+        return bonusPercent;
+    }
+
+    function getEnergyDrinkEffect({
+        baseEnergy,
+        userPerks,
+        eventMultiplier = 1,
+    } = {}) {
+        const base =
+            Math.max(
+                0,
+                Number(
+                    baseEnergy
+                ) || 0
+            );
+
+        const factionPercent =
+            getEnergyDrinkFactionBonusPercent(
+                userPerks
+            );
+
+        const factionMultiplier =
+            1 +
+            (
+                factionPercent /
+                100
+            );
+
+        const normalizedEventMultiplier =
+            Math.max(
+                0,
+                Number(
+                    eventMultiplier
+                ) || 1
+            );
+
+        const effectiveEnergy =
+            Math.round(
+                base *
+                factionMultiplier *
+                normalizedEventMultiplier
+            );
+
+        return {
+            baseEnergy:
+                base,
+
+            factionPercent,
+
+            factionMultiplier,
+
+            eventMultiplier:
+                normalizedEventMultiplier,
+
+            effectiveEnergy,
+        };
+    }
+
     function getMaximumBoosterCooldownHours(
         userPerks
     ) {
@@ -2175,13 +2354,18 @@
         const sustainableBoosterHoursPerDay =
             SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
 
+        const energyDrinkEffect =
+            getEnergyDrinkEffect({
+                baseEnergy:
+                    settings
+                        ?.baseEnergyPerDrink,
+
+                userPerks,
+            });
+
         const energyPerDrink =
-            Math.max(
-                0,
-                Number(
-                    settings?.energyPerDrink
-                ) || 0
-            );
+            energyDrinkEffect
+                .effectiveEnergy;
 
         const bestBoosterPlan =
             optimizeBoosterMix({
