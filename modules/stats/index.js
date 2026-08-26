@@ -1239,10 +1239,6 @@
             return null;
         }
 
-        const text =
-            gymRoot.textContent ||
-            "";
-
         const result = {};
 
         const stats =
@@ -1252,6 +1248,11 @@
                 "speed",
                 "dexterity",
             ];
+
+        const rows =
+            gymRoot.querySelectorAll(
+                "li"
+            );
 
         for (
             const stat of
@@ -1263,24 +1264,47 @@
                     .toUpperCase() +
                 stat.slice(1);
 
-            const pattern =
-                new RegExp(
-                    `${label}\\s*([\\d,]+)`,
-                    "i"
+            const row =
+                [...rows].find(
+                    item =>
+                        String(
+                            item.textContent ||
+                            ""
+                        )
+                            .trim()
+                            .startsWith(
+                                label
+                            )
                 );
 
-            const match =
-                text.match(
-                    pattern
+            if (!row) {
+                continue;
+            }
+
+            const valueElement =
+                [...row.querySelectorAll(
+                    "span, div"
+                )].find(
+                    element => {
+                        const text =
+                            String(
+                                element.textContent ||
+                                ""
+                            ).trim();
+
+                        return /^[\d,]+$/.test(
+                            text
+                        );
+                    }
                 );
 
-            if (!match) {
+            if (!valueElement) {
                 continue;
             }
 
             const value =
                 parsePageNumber(
-                    match[1]
+                    valueElement.textContent
                 );
 
             if (
@@ -2439,6 +2463,64 @@
         return button;
     }
 
+    async function refreshFromVisibleGymPage(
+        attempts = 4,
+        delayMs = 300
+    ) {
+        for (
+            let attempt = 0;
+            attempt < attempts;
+            attempt += 1
+        ) {
+            await new Promise(
+                resolve =>
+                    globalThis.setTimeout(
+                        resolve,
+                        delayMs
+                    )
+            );
+
+            captureVisiblePageSnapshot();
+
+            const snapshot =
+                livePageSnapshot;
+
+            if (
+                snapshot &&
+                Object.keys(
+                    snapshot.battlestats || {}
+                ).length > 0
+            ) {
+                if (
+                    statsContainer &&
+                    statsContainer.isConnected
+                ) {
+                    const drafts =
+                        captureGoalDrafts(
+                            statsContainer
+                        );
+
+                    await render(
+                        statsContainer
+                    );
+
+                    restoreGoalDrafts(
+                        statsContainer,
+                        drafts
+                    );
+
+                    startLiveBars(
+                        statsContainer
+                    );
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function handleGymTrainClick(
         event
     ) {
@@ -2456,6 +2538,8 @@
         if (!button) {
             return;
         }
+
+        void refreshFromVisibleGymPage();
 
         /*
          * The user manually initiated the Torn train action.
