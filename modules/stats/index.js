@@ -54,6 +54,9 @@
 
     let statsRefreshInFlight =
         false;
+    
+    let livePageSnapshot =
+        null;
 
     const repository =
         TACTIC.repositories?.stats;
@@ -1146,6 +1149,266 @@
         return panel;
     }
 
+    function parsePageNumber(
+        value
+    ) {
+        const number =
+            Number(
+                String(
+                    value ?? ""
+                )
+                    .replace(
+                        /,/g,
+                        ""
+                    )
+                    .trim()
+            );
+
+        return Number.isFinite(
+            number
+        )
+            ? number
+            : null;
+    }
+
+    function readVisibleBarsFromPage() {
+        const mainContainer =
+            document.querySelector(
+                "#mainContainer"
+            );
+
+        if (!mainContainer) {
+            return null;
+        }
+
+        const text =
+            mainContainer
+                .textContent ||
+            "";
+
+        const energyMatch =
+            text.match(
+                /Energy:\s*([\d,]+)\s*\/\s*([\d,]+)/i
+            );
+
+        const happinessMatch =
+            text.match(
+                /Happy:\s*([\d,]+)\s*\/\s*([\d,]+)/i
+            );
+
+        return {
+            energy:
+                energyMatch
+                    ? {
+                        current:
+                            parsePageNumber(
+                                energyMatch[1]
+                            ),
+
+                        maximum:
+                            parsePageNumber(
+                                energyMatch[2]
+                            ),
+                    }
+                    : null,
+
+            happiness:
+                happinessMatch
+                    ? {
+                        current:
+                            parsePageNumber(
+                                happinessMatch[1]
+                            ),
+
+                        maximum:
+                            parsePageNumber(
+                                happinessMatch[2]
+                            ),
+                    }
+                    : null,
+        };
+    }
+
+    function readGymStatsFromPage() {
+        const gymRoot =
+            document.querySelector(
+                "#gymroot"
+            );
+
+        if (!gymRoot) {
+            return null;
+        }
+
+        const text =
+            gymRoot.textContent ||
+            "";
+
+        const result = {};
+
+        const stats =
+            [
+                "strength",
+                "defense",
+                "speed",
+                "dexterity",
+            ];
+
+        for (
+            const stat of
+            stats
+        ) {
+            const label =
+                stat
+                    .charAt(0)
+                    .toUpperCase() +
+                stat.slice(1);
+
+            const pattern =
+                new RegExp(
+                    `${label}\\s*([\\d,]+)`,
+                    "i"
+                );
+
+            const match =
+                text.match(
+                    pattern
+                );
+
+            if (!match) {
+                continue;
+            }
+
+            const value =
+                parsePageNumber(
+                    match[1]
+                );
+
+            if (
+                value !== null
+            ) {
+                result[
+                    stat
+                ] =
+                    value;
+            }
+        }
+
+        return result;
+    }
+
+    function captureVisiblePageSnapshot() {
+        const bars =
+            readVisibleBarsFromPage();
+
+        const battlestats =
+            isGymPage()
+                ? readGymStatsFromPage()
+                : null;
+
+        livePageSnapshot = {
+            capturedAt:
+                Date.now(),
+
+            energy:
+                bars?.energy ||
+                null,
+
+            happiness:
+                bars?.happiness ||
+                null,
+
+            battlestats:
+                battlestats ||
+                {},
+        };
+
+        return livePageSnapshot;
+    }
+
+    function getDisplayData() {
+        const data =
+            repository.inspect();
+
+        const snapshot =
+            livePageSnapshot;
+
+        if (!snapshot) {
+            return data;
+        }
+
+        if (
+            snapshot.energy &&
+            data?.bars?.energy
+        ) {
+            data.bars.energy = {
+                ...data.bars.energy,
+
+                current:
+                    snapshot
+                        .energy
+                        .current,
+
+                maximum:
+                    snapshot
+                        .energy
+                        .maximum,
+            };
+        }
+
+        if (
+            snapshot.happiness &&
+            data?.bars?.happy
+        ) {
+            data.bars.happy = {
+                ...data.bars.happy,
+
+                current:
+                    snapshot
+                        .happiness
+                        .current,
+
+                maximum:
+                    snapshot
+                        .happiness
+                        .maximum,
+            };
+        }
+
+        for (
+            const [
+                stat,
+                value,
+            ] of
+            Object.entries(
+                snapshot
+                    .battlestats ||
+                {}
+            )
+        ) {
+            if (
+                data
+                    ?.battlestats
+                    ?.[stat]
+            ) {
+                data
+                    .battlestats[
+                        stat
+                    ]
+                    .value =
+                    value;
+            }
+        }
+
+        /*
+         * Energy/Happiness regeneration now starts from the
+         * visible-page snapshot rather than the older API snapshot.
+         */
+        data.loadedAt =
+            snapshot.capturedAt;
+
+        return data;
+    }
+
     function createStatCard(
         key,
         label,
@@ -1872,7 +2135,7 @@
         }
 
         const data =
-            repository.inspect();
+            getDisplayData();
 
         const energy =
             data?.bars?.energy;
@@ -2201,13 +2464,34 @@
          * then synchronize TACTIC from the API once.
          */
         globalThis.setTimeout(
-            () => {
-                void refreshStatsData({
-                    rerender:
-                        true,
-                });
+            async () => {
+                captureVisiblePageSnapshot();
+
+                if (
+                    statsContainer &&
+                    statsContainer
+                        .isConnected
+                ) {
+                    const drafts =
+                        captureGoalDrafts(
+                            statsContainer
+                        );
+
+                    await render(
+                        statsContainer
+                    );
+
+                    restoreGoalDrafts(
+                        statsContainer,
+                        drafts
+                    );
+
+                    startLiveBars(
+                        statsContainer
+                    );
+                }
             },
-            1000
+            500
         );
     }
 
@@ -2220,7 +2504,7 @@
         container.replaceChildren();
 
         const data =
-            repository.inspect();
+            getDisplayData();
 
         const root =
             createElement(
@@ -3043,6 +3327,8 @@
                     );
                 }
             }
+
+            captureVisiblePageSnapshot();
 
             const result =
                 await render(
