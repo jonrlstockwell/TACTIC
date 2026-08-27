@@ -66,6 +66,9 @@
     const DATA_STORAGE =
         "stats:last-data";
 
+    const SPECIALIST_GYM_ACCESS_STORAGE =
+        "stats:specialist-gym-access";
+
     const DEFAULT_GOALS =
         Object.freeze({
             strength:
@@ -137,6 +140,112 @@
                 )
             );
         }
+    }
+
+    function normalizeGymIdList(
+        value
+    ) {
+        const source =
+            Array.isArray(value)
+                ? value
+                : [];
+
+        return [
+            ...new Set(
+                source
+                    .map(
+                        id =>
+                            Number(id)
+                    )
+                    .filter(
+                        id =>
+                            Number.isFinite(id)
+                    )
+            ),
+        ];
+    }
+
+    function getKnownSpecialistGymIds() {
+        return normalizeGymIdList(
+            storage.get(
+                SPECIALIST_GYM_ACCESS_STORAGE,
+                []
+            )
+        );
+    }
+
+    function rememberActiveSpecialistGym(
+        activeGym,
+        gyms
+    ) {
+        const activeGymId =
+            Number(
+                activeGym?.id
+            );
+
+        if (
+            !Number.isFinite(
+                activeGymId
+            ) ||
+            !Array.isArray(
+                gyms
+            )
+        ) {
+            return getKnownSpecialistGymIds();
+        }
+
+        const catalogGym =
+            gyms.find(
+                gym =>
+                    Number(
+                        gym?.id
+                    ) ===
+                    activeGymId
+            );
+
+        if (
+            !catalogGym ||
+            String(
+                catalogGym?.class || ""
+            ).toLowerCase() !==
+                "specialist"
+        ) {
+            return getKnownSpecialistGymIds();
+        }
+
+        const known =
+            getKnownSpecialistGymIds();
+
+        if (
+            known.includes(
+                activeGymId
+            )
+        ) {
+            return known;
+        }
+
+        const updated = [
+            ...known,
+            activeGymId,
+        ];
+
+        storage.set(
+            SPECIALIST_GYM_ACCESS_STORAGE,
+            updated
+        );
+
+        logger?.info(
+            "Specialist gym access learned",
+            {
+                gymId:
+                    activeGymId,
+
+                gymName:
+                    catalogGym?.name,
+            }
+        );
+
+        return updated;
     }
 
     function getApiKey() {
@@ -557,6 +666,11 @@
                     {}
                 );
 
+            rememberActiveSpecialistGym(
+                state.activeGym,
+                state.gyms
+            );
+
             state.factionUpgrades =
                 clone(
                     factionUpgradesResponse
@@ -754,6 +868,9 @@
                 clone(
                     state.gyms
                 ),
+
+            knownSpecialistGymIds:
+                getKnownSpecialistGymIds(),
 
             factionUpgrades:
                 clone(

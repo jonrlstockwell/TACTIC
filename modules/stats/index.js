@@ -2974,6 +2974,13 @@
                     activeGym:
                         data?.activeGym,
 
+                    battlestats:
+                        data?.battlestats,
+
+                    knownSpecialistGymIds:
+                        data
+                            ?.knownSpecialistGymIds,
+
                     trainingMultiplier:
                         trainingModifiers
                             .multiplier,

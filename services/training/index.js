@@ -614,9 +614,215 @@
         );
     }
 
+    function getBattleStatValue(
+        battlestats,
+        stat
+    ) {
+        const entry =
+            battlestats?.[stat];
+
+        if (
+            entry &&
+            typeof entry ===
+                "object"
+        ) {
+            return Math.max(
+                0,
+                Number(
+                    entry.value
+                ) || 0
+            );
+        }
+
+        return Math.max(
+            0,
+            Number(
+                entry
+            ) || 0
+        );
+    }
+
+    function normalizeGymIds(
+        value
+    ) {
+        return Array.isArray(
+            value
+        )
+            ? value
+                .map(
+                    id =>
+                        Number(id)
+                )
+                .filter(
+                    id =>
+                        Number.isFinite(
+                            id
+                        )
+                )
+            : [];
+    }
+
+    function meetsSpecialistGymRequirement(
+        gym,
+        battlestats
+    ) {
+        const name =
+            String(
+                gym?.name || ""
+            )
+                .trim()
+                .toLowerCase();
+
+        const strength =
+            getBattleStatValue(
+                battlestats,
+                "strength"
+            );
+
+        const defense =
+            getBattleStatValue(
+                battlestats,
+                "defense"
+            );
+
+        const speed =
+            getBattleStatValue(
+                battlestats,
+                "speed"
+            );
+
+        const dexterity =
+            getBattleStatValue(
+                battlestats,
+                "dexterity"
+            );
+
+        const stats = {
+            strength,
+            defense,
+            speed,
+            dexterity,
+        };
+
+        const secondHighestFor =
+            stat => {
+                const others =
+                    Object.entries(
+                        stats
+                    )
+                        .filter(
+                            ([key]) =>
+                                key !==
+                                stat
+                        )
+                        .map(
+                            ([, value]) =>
+                                value
+                        );
+
+                return Math.max(
+                    ...others
+                );
+            };
+
+        if (
+            name.includes(
+                "balboas"
+            )
+        ) {
+            return (
+                defense +
+                dexterity
+            ) >=
+                (
+                    (
+                        strength +
+                        speed
+                    ) *
+                    1.25
+                );
+        }
+
+        if (
+            name.includes(
+                "frontline"
+            )
+        ) {
+            return (
+                strength +
+                speed
+            ) >=
+                (
+                    (
+                        defense +
+                        dexterity
+                    ) *
+                    1.25
+                );
+        }
+
+        if (
+            name.includes(
+                "gym 3000"
+            )
+        ) {
+            return strength >=
+                secondHighestFor(
+                    "strength"
+                ) *
+                1.25;
+        }
+
+        if (
+            name.includes(
+                "isoyama"
+            )
+        ) {
+            return defense >=
+                secondHighestFor(
+                    "defense"
+                ) *
+                1.25;
+        }
+
+        if (
+            name.includes(
+                "total rebound"
+            )
+        ) {
+            return speed >=
+                secondHighestFor(
+                    "speed"
+                ) *
+                1.25;
+        }
+
+        if (
+            name.includes(
+                "elites"
+            )
+        ) {
+            return dexterity >=
+                secondHighestFor(
+                    "dexterity"
+                ) *
+                1.25;
+        }
+
+        /*
+         * TACTIC cannot currently verify every prerequisite
+         * for unknown specialist gyms safely.
+         */
+        return null;
+    }
+
     function determineGymAvailability(
         gym,
-        activeGym
+        activeGym,
+        {
+            knownSpecialistGymIds = [],
+            battlestats = null,
+        } = {}
     ) {
         if (!gym) {
             return {
@@ -688,12 +894,63 @@
             ).toLowerCase() ===
             "specialist"
         ) {
+            const knownIds =
+                normalizeGymIds(
+                    knownSpecialistGymIds
+                );
+
+            if (
+                !knownIds.includes(
+                    gymId
+                )
+            ) {
+                return {
+                    status:
+                        "unknown",
+
+                    reason:
+                        "specialist-membership-unknown",
+                };
+            }
+
+            const requirement =
+                meetsSpecialistGymRequirement(
+                    gym,
+                    battlestats
+                );
+
+            if (
+                requirement ===
+                false
+            ) {
+                return {
+                    status:
+                        "unavailable",
+
+                    reason:
+                        "specialist-requirement-not-met",
+                };
+            }
+
+            if (
+                requirement ===
+                null
+            ) {
+                return {
+                    status:
+                        "unknown",
+
+                    reason:
+                        "specialist-requirement-unverified",
+                };
+            }
+
             return {
                 status:
-                    "unknown",
+                    "verified",
 
                 reason:
-                    "specialist-membership-unknown",
+                    "known-specialist-membership",
             };
         }
 
@@ -712,6 +969,8 @@
         happiness,
         gyms,
         activeGym,
+        battlestats,
+        knownSpecialistGymIds = [],
         trainingMultiplier = 1,
     }) {
         const statKey =
@@ -738,7 +997,12 @@
             const availability =
                 determineGymAvailability(
                     gym,
-                    activeGym
+                    activeGym,
+                    {
+                        battlestats,
+
+                        knownSpecialistGymIds,
+                    }
                 );
 
             if (
@@ -947,6 +1211,8 @@
         happiness,
         gyms,
         activeGym,
+        battlestats,
+        knownSpecialistGymIds = [],
         trainingMultiplier = 1,
     }) {
         const statKey =
@@ -991,6 +1257,10 @@
                 gyms,
 
                 activeGym,
+
+                battlestats,
+
+                knownSpecialistGymIds,
 
                 trainingMultiplier,
             });
