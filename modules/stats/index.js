@@ -59,8 +59,29 @@
                     user:
                         Object.freeze([
                             "bars",
+                            "gym",
                             "battlestats",
+                            "perks",
                             "calendar",
+                        ]),
+
+                    torn:
+                        Object.freeze([
+                            "gyms",
+                            "calendar",
+                        ]),
+
+                    faction:
+                        Object.freeze([
+                            "upgrades",
+                        ]),
+                }),
+
+            optional:
+                Object.freeze({
+                    faction:
+                        Object.freeze([
+                            "upgrades",
                         ]),
                 }),
         });
@@ -70,22 +91,48 @@
     ) {
         const selections =
             requirements
-                ?.selections
-                ?.user ||
-            [];
+                ?.selections;
 
         if (
-            selections.length === 0
+            !selections ||
+            typeof selections !==
+                "object"
         ) {
             return "No API selections registered.";
         }
 
-        return selections
-            .map(
-                selection =>
-                    `user/${selection}`
+        const result = [];
+
+        for (
+            const [
+                section,
+                sectionSelections,
+            ] of
+            Object.entries(
+                selections
             )
-            .join(", ");
+        ) {
+            if (
+                !Array.isArray(
+                    sectionSelections
+                )
+            ) {
+                continue;
+            }
+
+            for (
+                const selection of
+                sectionSelections
+            ) {
+                result.push(
+                    `${section}/${selection}`
+                );
+            }
+        }
+
+        return result.length > 0
+            ? result.join(", ")
+            : "No API selections registered.";
     }
 
     let liveBarTimer =

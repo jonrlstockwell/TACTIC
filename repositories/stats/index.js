@@ -108,6 +108,12 @@
 
         userPerks:
             null,
+
+        userCalendar:
+            null,
+
+        tornCalendar:
+            null,
     };
 
     function clone(
@@ -392,6 +398,44 @@
         }
     }
 
+    async function loadUserCalendar() {
+        try {
+            return await apiRequest(
+                "/v2/user/calendar"
+            );
+        } catch (error) {
+            logger?.warn(
+                "User calendar unavailable",
+                {
+                    message:
+                        error?.message ||
+                        String(error),
+                }
+            );
+
+            return null;
+        }
+    }
+
+    async function loadTornCalendar() {
+        try {
+            return await apiRequest(
+                "/v2/torn/calendar"
+            );
+        } catch (error) {
+            logger?.warn(
+                "Torn calendar unavailable",
+                {
+                    message:
+                        error?.message ||
+                        String(error),
+                }
+            );
+
+            return null;
+        }
+    }
+
     async function refresh() {
         if (state.loading) {
             return inspect();
@@ -418,6 +462,8 @@
                 gymResponse,
                 factionUpgradesResponse,
                 userPerksResponse,
+                userCalendarResponse,
+                tornCalendarResponse,
             ] =
                 await Promise.all([
                     apiRequest(
@@ -431,7 +477,11 @@
                     loadFactionUpgrades(),
 
                     loadUserPerks(),
-                ]);
+
+                    loadUserCalendar(),
+
+                    loadTornCalendar(),
+                    ]);
 
             console.group(
                 "[TACTIC STATS] Training Data Audit"
@@ -467,6 +517,16 @@
             console.log(
                 "GYM CATALOG:",
                 gymResponse?.gyms
+            );
+
+            console.log(
+                "RAW USER CALENDAR:",
+                userCalendarResponse
+            );
+
+            console.log(
+                "RAW TORN CALENDAR:",
+                tornCalendarResponse
             );
 
             console.groupEnd();
@@ -507,6 +567,16 @@
                     userPerksResponse
                 );
 
+            state.userCalendar =
+                clone(
+                    userCalendarResponse
+                );
+
+            state.tornCalendar =
+                clone(
+                    tornCalendarResponse
+                );
+
             state.loadedAt =
                 Date.now();
 
@@ -534,6 +604,14 @@
                     userPerks:
                         state
                             .userPerks,
+
+                    userCalendar:
+                        state
+                            .userCalendar,
+
+                    tornCalendar:
+                        state
+                            .tornCalendar,
 
                     loadedAt:
                         state
@@ -625,6 +703,16 @@
                 cached.userPerks
             );
 
+        state.userCalendar =
+            clone(
+                cached.userCalendar
+            );
+
+        state.tornCalendar =
+            clone(
+                cached.tornCalendar
+            );
+
         state.loadedAt =
             Number.isFinite(
                 cached.loadedAt
@@ -677,6 +765,18 @@
                 clone(
                     state
                         .userPerks
+                ),
+
+            userCalendar:
+                clone(
+                    state
+                        .userCalendar
+                ),
+
+            tornCalendar:
+                clone(
+                    state
+                        .tornCalendar
                 ),
 
             goals:
