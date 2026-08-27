@@ -1109,6 +1109,17 @@
         const statsData =
             repository.inspect();
 
+        const caffeineConModifier =
+            getCaffeineConModifier({
+                tornCalendar:
+                    statsData
+                        ?.tornCalendar,
+
+                userCalendar:
+                    statsData
+                        ?.userCalendar,
+            });
+
         const energyDrinkEffect =
             getEnergyDrinkEffect({
                 baseEnergy:
@@ -1117,6 +1128,10 @@
 
                 userPerks:
                     statsData?.userPerks,
+
+                eventMultiplier:
+                    caffeineConModifier
+                        .multiplier,
             });
 
         const effectiveEnergyPerDrink =
@@ -1133,11 +1148,17 @@
                 "div",
                 {
                     text:
-                        energyDrinkEffect
-                            .factionPercent >
-                        0
-                            ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction)`
-                            : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can`,
+                        caffeineConModifier.active
+                            ? energyDrinkEffect
+                                .factionPercent >
+                            0
+                                ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction, ×2 CaffeineCon)`
+                                : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (×2 CaffeineCon)`
+                            : energyDrinkEffect
+                                .factionPercent >
+                            0
+                                ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction)`
+                                : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can`,
 
                     styles: {
                         fontSize:
@@ -1974,6 +1995,241 @@
         return data;
     }
 
+    function parseTctStartTime(
+        value
+    ) {
+        const match =
+            String(
+                value || ""
+            )
+                .trim()
+                .match(
+                    /^(\d{1,2}):(\d{2})\s*TCT$/i
+                );
+
+        if (!match) {
+            return null;
+        }
+
+        const hours =
+            Number(
+                match[1]
+            );
+
+        const minutes =
+            Number(
+                match[2]
+            );
+
+        if (
+            !Number.isInteger(
+                hours
+            ) ||
+            !Number.isInteger(
+                minutes
+            ) ||
+            hours < 0 ||
+            hours > 23 ||
+            minutes < 0 ||
+            minutes > 59
+        ) {
+            return null;
+        }
+
+        return {
+            hours,
+            minutes,
+
+            seconds:
+                (
+                    hours *
+                    60 *
+                    60
+                ) +
+                (
+                    minutes *
+                    60
+                ),
+        };
+    }
+
+    function getPersonalizedEventWindow({
+        event,
+        userCalendar,
+    } = {}) {
+        const globalStart =
+            Number(
+                event?.start
+            );
+
+        const globalEnd =
+            Number(
+                event?.end
+            );
+
+        if (
+            !Number.isFinite(
+                globalStart
+            ) ||
+            !Number.isFinite(
+                globalEnd
+            ) ||
+            globalEnd <
+                globalStart
+        ) {
+            return null;
+        }
+
+        if (
+            event
+                ?.fixed_start_time ===
+            true
+        ) {
+            return {
+                start:
+                    globalStart,
+
+                end:
+                    globalEnd,
+            };
+        }
+
+        const personalStart =
+            parseTctStartTime(
+                userCalendar
+                    ?.calendar
+                    ?.start_time
+            );
+
+        if (!personalStart) {
+            return {
+                start:
+                    globalStart,
+
+                end:
+                    globalEnd,
+            };
+        }
+
+        const duration =
+            globalEnd -
+            globalStart;
+
+        const start =
+            globalStart +
+            personalStart.seconds;
+
+        return {
+            start,
+
+            end:
+                start +
+                duration,
+        };
+    }
+
+    function getCaffeineConModifier({
+        tornCalendar,
+        userCalendar,
+        now =
+            Math.floor(
+                Date.now() /
+                1000
+            ),
+    } = {}) {
+        const events =
+            tornCalendar
+                ?.calendar
+                ?.events;
+
+        if (
+            !Array.isArray(
+                events
+            )
+        ) {
+            return {
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                event:
+                    null,
+            };
+        }
+
+        const caffeineCon =
+            events.find(
+                event =>
+                    /^CaffeineCon\b/i.test(
+                        String(
+                            event
+                                ?.title ||
+                            ""
+                        )
+                    )
+            );
+
+        if (!caffeineCon) {
+            return {
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                event:
+                    null,
+            };
+        }
+
+        const window =
+            getPersonalizedEventWindow({
+                event:
+                    caffeineCon,
+
+                userCalendar,
+            });
+
+        if (!window) {
+            return {
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                event:
+                    caffeineCon,
+            };
+        }
+
+        const active =
+            now >=
+                window.start &&
+            now <=
+                window.end;
+
+        return {
+            active,
+
+            multiplier:
+                active
+                    ? 2
+                    : 1,
+
+            event:
+                caffeineCon,
+
+            start:
+                window.start,
+
+            end:
+                window.end,
+        };
+    }
+
     function getEnergyDrinkFactionBonusPercent(
         userPerks
     ) {
@@ -2306,6 +2562,8 @@
         energyInterval,
         settings,
         userPerks,
+        tornCalendar,
+        userCalendar,
     } = {}) {
         const required =
             Math.max(
@@ -2447,13 +2705,26 @@
         const sustainableBoosterHoursPerDay =
             SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
 
+        const caffeineConModifier =
+            getCaffeineConModifier({
+                tornCalendar:
+                    tornCalendar,
+
+                userCalendar:
+                    userCalendar,
+            });
+
         const energyDrinkEffect =
             getEnergyDrinkEffect({
                 baseEnergy:
                     settings
-                        ?.baseEnergyPerDrink,
+                        .baseEnergyPerDrink,
 
                 userPerks,
+
+                eventMultiplier:
+                    caffeineConModifier
+                        .multiplier,
             });
 
         const energyPerDrink =
@@ -2616,6 +2887,12 @@
 
                 userPerks:
                     data?.userPerks,
+
+                tornCalendar:
+                    data?.tornCalendar,
+
+                userCalendar:
+                    data?.userCalendar,
             });
 
         const plan =
