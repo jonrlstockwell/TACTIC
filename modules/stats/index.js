@@ -1147,20 +1147,13 @@
             createElement(
                 "div",
                 {
-                    text:
-                        caffeineConModifier.active
-                            ? energyDrinkEffect
-                                .factionPercent >
-                            0
-                                ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction, ×2 CaffeineCon)`
-                                : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (×2 CaffeineCon)`
-                            : energyDrinkEffect
-                                .factionPercent >
-                            0
-                                ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction)`
-                                : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can`,
-
                     styles: {
+                        display:
+                            "grid",
+
+                        gap:
+                            "2px",
+
                         fontSize:
                             "9px",
 
@@ -1175,6 +1168,72 @@
                     },
                 }
             );
+
+        drinkEffectSummary.appendChild(
+            createElement(
+                "div",
+                {
+                    text:
+                        `Effective: ${energyDrinkEffect.effectiveEnergy} E / can`,
+                }
+            )
+        );
+
+        if (
+            energyDrinkEffect
+                .factionPercent >
+            0
+        ) {
+            drinkEffectSummary.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `+${energyDrinkEffect.factionPercent}% faction`,
+                    }
+                )
+            );
+        }
+
+        if (
+            caffeineConModifier.active
+        ) {
+            drinkEffectSummary.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `×${caffeineConModifier.multiplier} CaffeineCon`,
+                    }
+                )
+            );
+        }
+
+        const totalEnergyDrinkMultiplier =
+            energyDrinkEffect
+                .factionMultiplier *
+            energyDrinkEffect
+                .eventMultiplier;
+
+        if (
+            totalEnergyDrinkMultiplier >
+            1
+        ) {
+            drinkEffectSummary.appendChild(
+                createElement(
+                    "div",
+                    {
+                        text:
+                            `Total multiplier: ×${totalEnergyDrinkMultiplier.toFixed(2)}`,
+
+                        styles: {
+                            marginTop:
+                                "1px",
+                        },
+                    }
+                )
+            );
+        }
 
         drinksSection.appendChild(
             drinkEffectSummary
