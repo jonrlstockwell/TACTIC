@@ -1050,8 +1050,8 @@
                         energyDrinkEffect
                             .factionPercent >
                         0
-                            ? `Effective: ${energyDrinkEffect.effectiveEnergy} E/can (+${energyDrinkEffect.factionPercent}% faction)`
-                            : `Effective: ${energyDrinkEffect.effectiveEnergy} E/can`,
+                            ? `Effective: ${energyDrinkEffect.effectiveEnergy} E / can (+${energyDrinkEffect.factionPercent}% faction)`
+                            : `Effective: ${energyDrinkEffect.effectiveEnergy} E / can`,
 
                     styles: {
                         fontSize:
