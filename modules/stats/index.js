@@ -1341,7 +1341,7 @@
                 "div",
                 {
                     text:
-                        `Selected cooldown: ${boosterHoursRequested}h/day`,
+                        `Selected cooldown: ${boosterHoursRequested}h / day`,
 
                     styles: {
                         fontWeight:
