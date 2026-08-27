@@ -219,6 +219,80 @@
         );
     }
 
+    function formatBattleStat(
+        value
+    ) {
+        const number =
+            Number(value);
+
+        if (
+            !Number.isFinite(
+                number
+            )
+        ) {
+            return "—";
+        }
+
+        const absolute =
+            Math.abs(
+                number
+            );
+
+        const units = [
+            {
+                threshold:
+                    1_000_000_000_000_000,
+                divisor:
+                    1_000_000_000_000_000,
+                suffix:
+                    "Q",
+            },
+            {
+                threshold:
+                    1_000_000_000_000,
+                divisor:
+                    1_000_000_000_000,
+                suffix:
+                    "T",
+            },
+            {
+                threshold:
+                    1_000_000_000,
+                divisor:
+                    1_000_000_000,
+                suffix:
+                    "B",
+            },
+        ];
+
+        for (
+            const unit of
+            units
+        ) {
+            if (
+                absolute >=
+                unit.threshold
+            ) {
+                return (
+                    number /
+                    unit.divisor
+                )
+                    .toFixed(3)
+                    .replace(
+                        /\.?0+$/,
+                        ""
+                    ) +
+                    unit.suffix;
+            }
+        }
+
+        return Math.round(
+            number
+        ).toLocaleString(
+            "en-US"
+        );
+    }
+
     function formatDuration(
         seconds
     ) {
@@ -3099,7 +3173,7 @@
                 "div",
                 {
                     text:
-                        formatNumber(
+                        formatBattleStat(
                             current
                         ),
 
