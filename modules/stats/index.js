@@ -49,6 +49,45 @@
     const SUSTAINABLE_BOOSTER_HOURS_PER_DAY =
         24;
 
+    const STATS_API_REQUIREMENTS =
+        Object.freeze({
+            accessLevel:
+                "Limited",
+
+            selections:
+                Object.freeze({
+                    user:
+                        Object.freeze([
+                            "bars",
+                            "battlestats",
+                            "calendar",
+                        ]),
+                }),
+        });
+
+    function formatApiRequirementSummary(
+        requirements
+    ) {
+        const selections =
+            requirements
+                ?.selections
+                ?.user ||
+            [];
+
+        if (
+            selections.length === 0
+        ) {
+            return "No API selections registered.";
+        }
+
+        return selections
+            .map(
+                selection =>
+                    `user/${selection}`
+            )
+            .join(", ");
+    }
+
     let liveBarTimer =
         null;
 
@@ -3988,22 +4027,101 @@
                 )
             );
 
-            setup.appendChild(
+            const apiDisclosure =
+                createElement(
+                    "div",
+                    {
+                        styles: {
+                            display:
+                                "grid",
+
+                            gap:
+                                "6px",
+
+                            padding:
+                                "10px",
+
+                            border:
+                                "1px solid rgba(255,255,255,.10)",
+
+                            borderRadius:
+                                "6px",
+
+                            background:
+                                "rgba(255,255,255,.025)",
+
+                            fontSize:
+                                "11px",
+
+                            lineHeight:
+                                "1.4",
+                        },
+                    }
+                );
+
+            apiDisclosure.append(
                 createElement(
                     "div",
                     {
                         text:
-                            "TACTIC needs a Torn API key to read your battle stats and gym data. The key is stored locally in Violentmonkey storage.",
+                            "TACTIC API ACCESS",
 
                         styles: {
-                            opacity:
-                                ".75",
+                            fontWeight:
+                                "700",
 
-                            fontSize:
-                                "12px",
+                            textAlign:
+                                "center",
+
+                            letterSpacing:
+                                ".06em",
                         },
                     }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Purpose: TACTIC uses the Torn API to read account information required by its enabled features, including battle stats, bars, gym information, perks, faction bonuses, and other data used to calculate recommendations.",
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Data storage: API data used by TACTIC is processed locally in your browser. TACTIC does not operate a remote server for storing your Torn account data.",
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "Data sharing: TACTIC does not send your Torn API data to TACTIC or third-party servers.",
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "API key storage: Your API key is stored locally in Violentmonkey storage on this browser and is not shared by TACTIC.",
+                    }
+                ),
+
+                createElement(
+                    "div",
+                    {
+                        text:
+                            "API access: TACTIC currently supports a Limited Access key. Restricted custom API keys containing only TACTIC's required selections will be supported.",
+                    }
                 )
+            );
+
+            setup.appendChild(
+                apiDisclosure
             );
 
             const keyInput =
