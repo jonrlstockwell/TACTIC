@@ -1020,6 +1020,23 @@
             }
         );
 
+        const statsData =
+            repository.inspect();
+
+        const energyDrinkEffect =
+            getEnergyDrinkEffect({
+                baseEnergy:
+                    settings
+                        .baseEnergyPerDrink,
+
+                userPerks:
+                    statsData?.userPerks,
+            });
+
+        const effectiveEnergyPerDrink =
+            energyDrinkEffect
+                .effectiveEnergy;
+
         drinksSection.append(
             drinksToggle.row,
             drinksGrid
@@ -1030,7 +1047,11 @@
                 "div",
                 {
                     text:
-                        "Effective Energy will be calculated from faction bonuses.",
+                        energyDrinkEffect
+                            .factionPercent >
+                        0
+                            ? `Effective: ${energyDrinkEffect.effectiveEnergy} E/can (+${energyDrinkEffect.factionPercent}% faction)`
+                            : `Effective: ${energyDrinkEffect.effectiveEnergy} E/can`,
 
                     styles: {
                         fontSize:
@@ -1041,6 +1062,9 @@
 
                         textAlign:
                             "center",
+
+                        lineHeight:
+                            "1.35",
                     },
                 }
             );
@@ -1205,23 +1229,6 @@
         panel.appendChild(
             fhcSection
         );
-
-        const statsData =
-            repository.inspect();
-
-        const energyDrinkEffect =
-            getEnergyDrinkEffect({
-                baseEnergy:
-                    settings
-                        .baseEnergyPerDrink,
-
-                userPerks:
-                    statsData?.userPerks,
-            });
-
-        const effectiveEnergyPerDrink =
-            energyDrinkEffect
-                .effectiveEnergy;
 
         const maximumBoosterCooldownHours =
             getMaximumBoosterCooldownHours(
