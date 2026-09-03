@@ -1903,6 +1903,161 @@
         };
     }
 
+    function renderGymTrainingBonuses() {
+        if (
+            !isGymPage() ||
+            !training
+        ) {
+            return;
+        }
+
+        const gymRoot =
+            document.querySelector(
+                "#gymroot"
+            );
+
+        if (!gymRoot) {
+            return;
+        }
+
+        const data =
+            repository.inspect();
+
+        const stats = [
+            "strength",
+            "defense",
+            "speed",
+            "dexterity",
+        ];
+
+        const rows =
+            gymRoot.querySelectorAll(
+                "li"
+            );
+
+        for (
+            const stat of
+            stats
+        ) {
+            const label =
+                stat
+                    .charAt(0)
+                    .toUpperCase() +
+                stat.slice(1);
+
+            const row =
+                [...rows].find(
+                    item =>
+                        String(
+                            item.textContent ||
+                            ""
+                        )
+                            .trim()
+                            .startsWith(
+                                label
+                            )
+                );
+
+            if (!row) {
+                continue;
+            }
+
+            row.querySelector(
+                ".tactic-training-bonus"
+            )?.remove();
+
+            const valueElement =
+                [...row.querySelectorAll(
+                    "span, div"
+                )].find(
+                    element => {
+                        const text =
+                            String(
+                                element.textContent ||
+                                ""
+                            ).trim();
+
+                        return /^[\d,]+$/.test(
+                            text
+                        );
+                    }
+                );
+
+            if (!valueElement) {
+                continue;
+            }
+
+            const modifiers =
+                training.getTrainingModifiers({
+                    stat,
+
+                    factionUpgrades:
+                        data?.factionUpgrades,
+
+                    userPerks:
+                        data?.userPerks,
+
+                    tornCalendar:
+                        data?.tornCalendar,
+
+                    userCalendar:
+                        data?.userCalendar,
+                });
+
+            const totalPercent =
+                Number(
+                    modifiers?.totalPercent
+                ) || 0;
+
+            const bonus =
+                document.createElement(
+                    "div"
+                );
+
+            bonus.className =
+                "tactic-training-bonus";
+
+            bonus.textContent =
+                totalPercent > 0
+                    ? `TACTIC Bonus: +${totalPercent}%`
+                    : "TACTIC Bonus: none";
+
+            Object.assign(
+                bonus.style,
+                {
+                    color:
+                        "#4da6ff",
+
+                    fontSize:
+                        "11px",
+
+                    lineHeight:
+                        "14px",
+
+                    marginTop:
+                        "2px",
+
+                    textAlign:
+                        "center",
+
+                    width:
+                        "100%",
+
+                    whiteSpace:
+                        "nowrap",
+
+                    fontWeight:
+                        "500",
+                }
+            );
+
+            valueElement.insertAdjacentElement(
+                "afterend",
+                bonus
+            );
+        }
+    }
+
     function readGymStatsFromPage() {
         const gymRoot =
             document.querySelector(
@@ -4175,6 +4330,12 @@
                 );
             }
 
+            if (
+                isGymPage()
+            ) {
+                renderGymTrainingBonuses();
+            }
+
             return true;
         } catch (error) {
             logger?.warn(
@@ -4211,15 +4372,15 @@
         }
 
         if (
-            isStatsDataFresh()
+            !isStatsDataFresh()
         ) {
-            return;
+            await refreshStatsData({
+                rerender:
+                    true,
+            });
         }
 
-        await refreshStatsData({
-            rerender:
-                true,
-        });
+        renderGymTrainingBonuses();
     }
 
     function isGymLink(
@@ -4438,6 +4599,12 @@
             startLiveBars(
                 statsContainer
             );
+        }
+
+        if (
+            isGymPage()
+        ) {
+            renderGymTrainingBonuses();
         }
 
         return Boolean(
