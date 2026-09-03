@@ -31,6 +31,9 @@
 
     const POLL_INTERVAL_MS =
         1000;
+
+    const COLLECTION_SUPPRESS_MS =
+        5000;
     
     const STORAGE_KEY_ENABLED =
         "tactic:tools:city-item-finder:enabled";
@@ -78,6 +81,9 @@
             null,
 
         markers:
+            new Map(),
+
+        pendingCollections:
             new Map(),
 
         detectedCount:
@@ -833,9 +839,18 @@
             );
 
             /*
-             * Torn handles the actual collection.
-             * Remove TACTIC's enlarged marker immediately.
+             * Torn handles the actual collection asynchronously.
+             *
+             * Remember this item briefly so the one-second marker
+             * synchronization does not recreate TACTIC's enlarged
+             * marker before Torn removes the collected item from
+             * territoryUserItems.
              */
+            state.pendingCollections.set(
+                item.key,
+                Date.now()
+            );
+
             removeMarker(
                 item.key
             );
@@ -900,6 +915,8 @@
                 key
             );
         }
+
+        state.pendingCollections.clear();
 
         state.detectedCount =
             0;
@@ -1099,9 +1116,59 @@
         const items =
             getItems();
 
+        const now =
+            Date.now();
+
+        /*
+         * A collected item can remain in Torn's model briefly
+         * while the pickup request finishes.
+         *
+         * Keep it suppressed during that window. If Torn removes
+         * it from the model, forget the pending entry immediately.
+         *
+         * If it remains for too long, assume collection failed and
+         * allow the enlarged marker to return.
+         */
+        for (
+            const [
+                key,
+                collectedAt,
+            ] of
+            state.pendingCollections
+        ) {
+            const stillPresent =
+                items.some(
+                    item =>
+                        item.key ===
+                        key
+                );
+
+            const expired =
+                now -
+                    collectedAt >=
+                COLLECTION_SUPPRESS_MS;
+
+            if (
+                !stillPresent ||
+                expired
+            ) {
+                state.pendingCollections.delete(
+                    key
+                );
+            }
+        }
+
+        const visibleItems =
+            items.filter(
+                item =>
+                    !state.pendingCollections.has(
+                        item.key
+                    )
+            );
+
         const activeKeys =
             new Set(
-                items.map(
+                visibleItems.map(
                     item =>
                         item.key
                 )
@@ -1128,7 +1195,7 @@
 
         for (
             const item of
-            items
+            visibleItems
         ) {
             const latLng =
                 getLatLng(
@@ -1176,7 +1243,7 @@
 
         updateStatusDisplay();
 
-        return items;
+        return visibleItems;
     }
 
     function stopWatcher() {
