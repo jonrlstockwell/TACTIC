@@ -2032,10 +2032,13 @@
                         "11px",
 
                     lineHeight:
-                        "14px",
+                        "12px",
 
                     marginTop:
-                        "2px",
+                        "-1px",
+
+                    marginBottom:
+                        "0",
 
                     textAlign:
                         "center",
@@ -2048,6 +2051,12 @@
 
                     fontWeight:
                         "500",
+
+                    position:
+                        "relative",
+
+                    top:
+                        "-2px",
                 }
             );
 
