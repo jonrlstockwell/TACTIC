@@ -838,6 +838,19 @@
                 "click"
             );
 
+            nativeLayer.closeTooltip?.();
+            nativeLayer.closePopup?.();
+
+            getTorn()
+                ?.map
+                ?.lmap
+                ?.closeTooltip?.();
+
+            getTorn()
+                ?.map
+                ?.lmap
+                ?.closePopup?.();
+
             /*
              * Torn handles the actual collection asynchronously.
              *
