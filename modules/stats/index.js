@@ -1183,17 +1183,6 @@
         const statsData =
             repository.inspect();
 
-        const caffeineConModifier =
-            getCaffeineConModifier({
-                tornCalendar:
-                    statsData
-                        ?.tornCalendar,
-
-                userCalendar:
-                    statsData
-                        ?.userCalendar,
-            });
-
         const energyDrinkEffect =
             getEnergyDrinkEffect({
                 baseEnergy:
@@ -1203,9 +1192,11 @@
                 userPerks:
                     statsData?.userPerks,
 
-                eventMultiplier:
-                    caffeineConModifier
-                        .multiplier,
+                tornCalendar:
+                    statsData?.tornCalendar,
+
+                userCalendar:
+                    statsData?.userCalendar,
             });
 
         const effectiveEnergyPerDrink =
@@ -1253,44 +1244,32 @@
             )
         );
 
-        if (
+        for (
+            const modifier of
             energyDrinkEffect
-                .factionPercent >
-            0
+                .modifiers
         ) {
+            if (
+                !modifier?.display
+            ) {
+                continue;
+            }
+
             drinkEffectSummary.appendChild(
                 createElement(
                     "div",
                     {
                         text:
-                            `+${energyDrinkEffect.factionPercent}% faction`,
+                            modifier
+                                .display,
                     }
                 )
             );
         }
 
         if (
-            caffeineConModifier.active
-        ) {
-            drinkEffectSummary.appendChild(
-                createElement(
-                    "div",
-                    {
-                        text:
-                            `×${caffeineConModifier.multiplier} CaffeineCon`,
-                    }
-                )
-            );
-        }
-
-        const totalEnergyDrinkMultiplier =
             energyDrinkEffect
-                .factionMultiplier *
-            energyDrinkEffect
-                .eventMultiplier;
-
-        if (
-            totalEnergyDrinkMultiplier >
+                .multiplier >
             1
         ) {
             drinkEffectSummary.appendChild(
@@ -1298,7 +1277,7 @@
                     "div",
                     {
                         text:
-                            `Total multiplier: ×${totalEnergyDrinkMultiplier.toFixed(2)}`,
+                            `Total multiplier: ×${energyDrinkEffect.multiplier.toFixed(2)}`,
 
                         styles: {
                             marginTop:
@@ -2363,6 +2342,150 @@
         };
     }
 
+    function getEnergyDrinkEventModifiers({
+        tornCalendar,
+        userCalendar,
+    } = {}) {
+        const modifiers =
+            [];
+
+        const caffeineCon =
+            getCaffeineConModifier({
+                tornCalendar,
+
+                userCalendar,
+            });
+
+        if (
+            caffeineCon.active
+        ) {
+            modifiers.push({
+                id:
+                    "caffeine-con",
+
+            source:
+                "event",
+
+                label:
+                    caffeineCon
+                        ?.event
+                        ?.title ||
+                    "CaffeineCon",
+
+                active:
+                    true,
+
+                multiplier:
+                    caffeineCon
+                        .multiplier,
+
+                display:
+                    `×${caffeineCon.multiplier} CaffeineCon`,
+
+                start:
+                    caffeineCon.start,
+
+                end:
+                    caffeineCon.end,
+            });
+        }
+
+        return modifiers;
+    }
+
+    function getEnergyDrinkModifiers({
+        userPerks,
+        tornCalendar,
+        userCalendar,
+    } = {}) {
+        const modifiers =
+            [];
+
+        const factionModifier =
+            getEnergyDrinkFactionModifier(
+                userPerks
+            );
+
+        if (
+            factionModifier.active
+        ) {
+            modifiers.push(
+                factionModifier
+            );
+        }
+
+        modifiers.push(
+            ...getEnergyDrinkEventModifiers({
+                tornCalendar,
+
+                userCalendar,
+            })
+        );
+
+        return combineMultipliers(
+            modifiers
+        );
+    }
+
+    function combineMultipliers(
+        modifiers
+    ) {
+        const normalized =
+            Array.isArray(modifiers)
+                ? modifiers
+                : [];
+
+        let multiplier =
+            1;
+
+        const activeModifiers =
+            [];
+
+        for (
+            const modifier of
+            normalized
+        ) {
+            if (
+                !modifier ||
+                modifier.active ===
+                    false
+            ) {
+                continue;
+            }
+
+            const value =
+                Number(
+                    modifier.multiplier
+                );
+
+            if (
+                !Number.isFinite(
+                    value
+                ) ||
+                value <= 0
+            ) {
+                continue;
+            }
+
+            multiplier *=
+                value;
+
+            activeModifiers.push({
+                ...modifier,
+
+                multiplier:
+                    value,
+            });
+        }
+
+        return {
+            multiplier,
+
+            modifiers:
+                activeModifiers,
+        };
+    }
+
     function getEnergyDrinkFactionBonusPercent(
         userPerks
     ) {
@@ -2421,10 +2544,75 @@
         return bonusPercent;
     }
 
+    function getEnergyDrinkFactionModifier(
+        userPerks
+    ) {
+        const percent =
+            getEnergyDrinkFactionBonusPercent(
+                userPerks
+            );
+
+        if (
+            percent <= 0
+        ) {
+            return {
+                id:
+                    "faction-energy-drink",
+
+                source:
+                    "faction",
+
+                label:
+                    "Faction",
+
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                percent:
+                    0,
+
+                display:
+                    null,
+            };
+        }
+
+        const multiplier =
+            1 +
+            (
+                percent /
+                100
+            );
+
+        return {
+            id:
+                "faction-energy-drink",
+
+            source:
+                "faction",
+
+            label:
+                "Faction",
+
+            active:
+                true,
+
+            multiplier,
+
+            percent,
+
+            display:
+                `+${percent}% faction`,
+        };
+    }
+
     function getEnergyDrinkEffect({
         baseEnergy,
         userPerks,
-        eventMultiplier = 1,
+        tornCalendar,
+        userCalendar,
     } = {}) {
         const base =
             Math.max(
@@ -2434,45 +2622,35 @@
                 ) || 0
             );
 
-        const factionPercent =
-            getEnergyDrinkFactionBonusPercent(
-                userPerks
-            );
+        const modifierResult =
+            getEnergyDrinkModifiers({
+                userPerks,
 
-        const factionMultiplier =
-            1 +
-            (
-                factionPercent /
-                100
-            );
+                tornCalendar,
 
-        const normalizedEventMultiplier =
-            Math.max(
-                0,
-                Number(
-                    eventMultiplier
-                ) || 1
-            );
+                userCalendar,
+            });
 
         const effectiveEnergy =
             Math.round(
                 base *
-                factionMultiplier *
-                normalizedEventMultiplier
+                modifierResult
+                    .multiplier
             );
 
         return {
             baseEnergy:
                 base,
 
-            factionPercent,
-
-            factionMultiplier,
-
-            eventMultiplier:
-                normalizedEventMultiplier,
-
             effectiveEnergy,
+
+            multiplier:
+                modifierResult
+                    .multiplier,
+
+            modifiers:
+                modifierResult
+                    .modifiers,
         };
     }
 
@@ -2838,15 +3016,6 @@
         const sustainableBoosterHoursPerDay =
             SUSTAINABLE_BOOSTER_HOURS_PER_DAY;
 
-        const caffeineConModifier =
-            getCaffeineConModifier({
-                tornCalendar:
-                    tornCalendar,
-
-                userCalendar:
-                    userCalendar,
-            });
-
         const energyDrinkEffect =
             getEnergyDrinkEffect({
                 baseEnergy:
@@ -2855,9 +3024,9 @@
 
                 userPerks,
 
-                eventMultiplier:
-                    caffeineConModifier
-                        .multiplier,
+                tornCalendar,
+
+                userCalendar,
             });
 
         const energyPerDrink =
@@ -3107,6 +3276,12 @@
 
                     userPerks:
                         data?.userPerks,
+
+                    tornCalendar:
+                        data?.tornCalendar,
+
+                    userCalendar:
+                        data?.userCalendar,
                 })
                 : null;
 
