@@ -1206,6 +1206,29 @@
                 continue;
             }
 
+            /*
+             * territoryUserItems can temporarily retain an item even
+             * after Torn has successfully collected it.
+             *
+             * Torn's native Leaflet marker is the authoritative signal
+             * that the item is still collectible. Do not display a
+             * TACTIC enlargement unless the native clickable layer
+             * still exists.
+             */
+            const nativeLayer =
+                findNativeItemLayer(
+                    item,
+                    latLng
+                );
+
+            if (!nativeLayer) {
+                removeMarker(
+                    item.key
+                );
+
+                continue;
+            }
+
             const existing =
                 state.markers
                     .get(
