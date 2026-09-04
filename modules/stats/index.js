@@ -2557,6 +2557,115 @@
         return modifiers;
     }
 
+    function getEnergyDrinkBookModifier(
+        userPerks
+    ) {
+        const bookPerks =
+            userPerks
+                ?.perks
+                ?.book;
+
+        if (
+            !Array.isArray(
+                bookPerks
+            )
+        ) {
+            return {
+                id:
+                    "book-energy-drink",
+
+                source:
+                    "book",
+
+                label:
+                    "Book",
+
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                display:
+                    null,
+            };
+        }
+
+        const activeBookPerk =
+            bookPerks.find(
+                perk => {
+                    const text =
+                        String(
+                            perk || ""
+                        )
+                            .trim()
+                            .toLowerCase();
+
+                    return (
+                        text.includes(
+                            "energy drink"
+                        ) &&
+                        (
+                            text.includes(
+                                "double"
+                            ) ||
+                            text.includes(
+                                "doubled"
+                            ) ||
+                            text.includes(
+                                "100%"
+                            )
+                        )
+                    );
+                }
+            );
+
+        if (!activeBookPerk) {
+            return {
+                id:
+                    "book-energy-drink",
+
+                source:
+                    "book",
+
+                label:
+                    "Book",
+
+                active:
+                    false,
+
+                multiplier:
+                    1,
+
+                display:
+                    null,
+            };
+        }
+
+        return {
+            id:
+                "book-energy-drink",
+
+            source:
+                "book",
+
+            label:
+                "Energy Drink Book",
+
+            active:
+                true,
+
+            multiplier:
+                2,
+
+            display:
+                "×2 book",
+
+            perk:
+                activeBookPerk,
+        };
+    }
+
     function getEnergyDrinkModifiers({
         userPerks,
         tornCalendar,
@@ -2566,25 +2675,38 @@
             [];
 
         const factionModifier =
-            getEnergyDrinkFactionModifier(
-                userPerks
-            );
-
-        if (
-            factionModifier.active
-        ) {
-            modifiers.push(
-                factionModifier
-            );
-        }
-
-        modifiers.push(
-            ...getEnergyDrinkEventModifiers({
-                tornCalendar,
-
-                userCalendar,
-            })
+        getEnergyDrinkFactionModifier(
+            userPerks
         );
+
+    if (
+        factionModifier.active
+    ) {
+        modifiers.push(
+            factionModifier
+        );
+    }
+
+    const bookModifier =
+        getEnergyDrinkBookModifier(
+            userPerks
+        );
+
+    if (
+        bookModifier.active
+    ) {
+        modifiers.push(
+            bookModifier
+        );
+    }
+
+    modifiers.push(
+        ...getEnergyDrinkEventModifiers({
+            tornCalendar,
+
+            userCalendar,
+        })
+    );
 
         return combineMultipliers(
             modifiers
